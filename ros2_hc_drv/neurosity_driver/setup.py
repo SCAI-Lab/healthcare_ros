@@ -11,7 +11,11 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
     ],
-    install_requires=['setuptools', 'python-dotenv', 'neurosity-sdk'],
+    install_requires=[
+        'setuptools',
+        'python-dotenv',
+        'neurosity'
+    ],
     zip_safe=True,
     maintainer='Monica Perez-Serrano',
     maintainer_email='moperez@ethz.ch',
