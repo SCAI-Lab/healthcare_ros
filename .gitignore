@@ -205,3 +205,23 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Project-specific additions
+# Virtual environment(s)
+neurosity-venv/
+.venv/
+venv/
+
+# Local logs and saved EEG data
+/neurosity_logs/
+*.log
+*.jsonl
+
+# ROS build/install artifacts (workspace-local)
+/build/
+/install/
+/log/
+
+# Editor / environment
+.vscode/
+.pytest_cache/

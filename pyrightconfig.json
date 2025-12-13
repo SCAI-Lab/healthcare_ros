@@ -1,0 +1,11 @@
+{
+  "pythonVersion": "3.12",
+  "pythonPlatform": "Linux",
+  "typeCheckingMode": "off",
+  "extraPaths": [
+    "/home/tjalf/ros2_ws/install/lib/python3.12/site-packages",
+    "/home/tjalf/neurosity-venv/lib/python3.12/site-packages",
+    "/opt/ros/jazzy/lib/python3.12/site-packages"
+  ],
+  "ignore": ["**/__pycache__", "**/.*"]
+}

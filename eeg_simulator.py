@@ -1,0 +1,166 @@
+#!/usr/bin/env python3
+"""
+EEG Data Simulator Node
+
+Publishes simulated EEG data to the /neurosity/eeg topic in the correct
+healthcare_msgs format. Useful for testing the eeg_saver without a physical device.
+
+Simulates 4 channels of EEG data with realistic brain signal characteristics:
+- Alpha waves (8-12 Hz)
+- Beta waves (13-30 Hz)
+- Theta waves (4-8 Hz)
+"""
+
+import math
+import time
+import rclpy
+from rclpy.node import Node
+from healthcare_msgs.msg import EEG, EEGInfo
+from pathlib import Path
+
+
+class EEGSimulator(Node):
+    def __init__(self):
+        super().__init__('eeg_simulator')
+        
+        # Publishers
+        self.eeg_pub = self.create_publisher(EEG, '/neurosity/eeg', 10)
+        self.eeg_info_pub = self.create_publisher(EEGInfo, '/neurosity/eeg_info', 1)
+        
+        # Simulation parameters
+        self.sampling_rate = 256  # Hz
+        self.num_channels = 4
+        self.channel_names = ['FP1', 'FP2', 'F3', 'F4']
+        self.samples_per_message = 64  # samples per message
+        self.message_interval = self.samples_per_message / self.sampling_rate
+        
+        # Oscillation parameters for realistic brain signals
+        self.time_offset = 0.0
+        self.alpha_freq = 10.0  # Hz
+        self.beta_freq = 20.0   # Hz
+        self.theta_freq = 6.0   # Hz
+        
+        self.sample_count = 0
+        self.message_count = 0
+        self.info_published = False
+        
+        # Timer for publishing messages
+        self.timer = self.create_timer(self.message_interval, self.publish_eeg)
+        
+        self.get_logger().info(
+            f'EEG Simulator started: {self.num_channels} channels, '
+            f'{self.sampling_rate} Hz, {self.samples_per_message} samples/msg'
+        )
+    
+    def generate_signal(self, channel, time_sec):
+        """Generate realistic EEG-like signal for a channel.
+        
+        Combines multiple frequency components to simulate brain activity.
+        """
+        # Alpha waves (8-12 Hz) - primary component
+        alpha = 15.0 * math.sin(2 * math.pi * self.alpha_freq * time_sec)
+        
+        # Beta waves (13-30 Hz) - secondary component
+        beta = 8.0 * math.sin(2 * math.pi * self.beta_freq * time_sec)
+        
+        # Theta waves (4-8 Hz) - tertiary component
+        theta = 10.0 * math.sin(2 * math.pi * self.theta_freq * time_sec)
+        
+        # Add slight phase shift per channel for realism
+        phase_shift = channel * (math.pi / 4)
+        signal = (alpha + beta + theta) * math.sin(phase_shift)
+        
+        # Add small noise
+        import random
+        noise = random.gauss(0, 0.5)
+        
+        return signal + noise
+    
+    def publish_eeg(self):
+        """Publish a simulated EEG message."""
+        eeg_msg = EEG()
+        eeg_msg.header.stamp = self.get_clock().now().to_msg()
+        eeg_msg.header.frame_id = 'neurosity_simulator'
+        eeg_msg.session_id = 'sim_session_001'
+        eeg_msg.sample_size = self.samples_per_message
+        
+        # Generate flattened EEG data
+        eeg_data = []
+        quality_data = []
+        
+        for ch in range(self.num_channels):
+            for s in range(self.samples_per_message):
+                time_sec = (self.sample_count + s) / self.sampling_rate
+                sample = self.generate_signal(ch, time_sec)
+                eeg_data.append(sample)
+            
+            # Quality: simulate varying quality per channel
+            quality = 0.85 + 0.1 * math.sin(self.time_offset + ch)
+            quality_data.append(max(0.5, min(1.0, quality)))
+        
+        eeg_msg.eeg = eeg_data
+        eeg_msg.quality = quality_data
+        
+        self.eeg_pub.publish(eeg_msg)
+        self.message_count += 1
+        self.sample_count += self.samples_per_message
+        self.time_offset += self.message_interval
+        
+        # Publish EEGInfo once
+        if not self.info_published:
+            self.publish_eeg_info()
+            self.info_published = True
+        
+        # Log progress every 10 messages
+        if self.message_count % 10 == 0:
+            self.get_logger().info(
+                f'Published {self.message_count} EEG messages '
+                f'({self.sample_count} samples, {self.time_offset:.1f}s elapsed)'
+            )
+    
+    def publish_eeg_info(self):
+        """Publish EEG metadata once."""
+        info_msg = EEGInfo()
+        info_msg.device_info.session_id = 'sim_session_001'
+        info_msg.channel_size = self.num_channels
+        info_msg.units = EEGInfo.UNIT_UV
+        info_msg.selected_preprocessing = [
+            EEGInfo.EEG_PREPROC_BANDPASS,
+            EEGInfo.EEG_PREPROC_NOTCH
+        ]
+        info_msg.montage_type = EEGInfo.MONTAGE_TYPE_REFERENTIAL
+        
+        # Map channel names to electrode site enums
+        info_msg.electrode_sites = [
+            EEGInfo.ELECTRODE_FP1,  # FP1
+            EEGInfo.ELECTRODE_FP2,  # FP2
+            EEGInfo.ELECTRODE_F3,   # F3
+            EEGInfo.ELECTRODE_F4,   # F4
+        ]
+        info_msg.electrode_physical_type = [
+            EEGInfo.ELECTRODE_PHYSICAL_DRY
+        ] * self.num_channels
+        info_msg.placement_method = [
+            EEGInfo.PLACEMENT_METHOD_1020
+        ] * self.num_channels
+        info_msg.signal_mode = EEGInfo.SIGNAL_MODE_SURFACE
+        
+        self.eeg_info_pub.publish(info_msg)
+        self.get_logger().info('Published EEGInfo metadata')
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    simulator = EEGSimulator()
+    
+    try:
+        rclpy.spin(simulator)
+    except KeyboardInterrupt:
+        simulator.get_logger().info(f'Shutting down. Published {simulator.message_count} messages')
+    finally:
+        simulator.destroy_node()
+        rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
