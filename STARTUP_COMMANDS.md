@@ -80,11 +80,60 @@ You can control script behavior with environment variables:
 
 - `NO_BUILD=1` - Skip building packages (use if already built)
 - `RUN_NODE=1` - Start the driver node (default: 1)
+- `SIMULATE=1` - Use EEG simulator instead of real device (default: 0)
 
 Example:
 ```bash
-cd ~/ros2_ws/src/-healthcare_msgs_demonstration && NO_BUILD=1 RUN_NODE=1 ./start.sh
+cd ~/ros2_ws/src/-healthcare_msgs_demonstration && SIMULATE=1 NO_BUILD=1 RUN_NODE=1 ./start.sh
 ```
+
+## Testing & Validation
+
+### Run Automated Integration Test
+Test the complete EEG pipeline (simulator + saver) and validate data format:
+
+```bash
+cd ~/ros2_ws/src/-healthcare_msgs_demonstration
+python3 test_eeg_integration.py 15
+```
+
+This will:
+- Start simulator for 15 seconds
+- Validate 6 checks (file format, channels, sample counts, quality scores)
+- Report pass/fail results with data statistics
+
+### Generate EEG Plots & Statistics
+
+Visualize stored EEG data and generate time-domain + frequency-spectrum plots:
+
+```bash
+cd ~/ros2_ws/src/-healthcare_msgs_demonstration
+python3 visualize_eeg.py ~/neurosity_logs/eeg_data.jsonl
+```
+
+Outputs:
+- Console statistics (mean, std, min, max per channel in µV)
+- `eeg_time_domain.png` — Signal waveforms for 4 channels
+- `eeg_frequency_spectrum.png` — FFT plots with Alpha/Beta/Theta markers
+
+## Recommended Workflow
+
+1. **Validate setup (no device needed):**
+   ```bash
+   SIMULATE=1 ./start.sh &  # Start simulator in background
+   sleep 10
+   python3 test_eeg_integration.py 10  # Run validation test
+   ```
+
+2. **Visualize captured data:**
+   ```bash
+   python3 visualize_eeg.py ~/neurosity_logs/eeg_data.jsonl
+   ```
+
+3. **With real Neurosity device:**
+   ```bash
+   ./start.sh  # Uses real device (requires .env credentials)
+   ```
 
 ## Required Files
 
@@ -111,4 +160,6 @@ Should show: `/home/tjalf/neurosity-venv/bin/python3`
 ### View full logs
 ```bash
 cat ~/neurosity_logs/neurosity_driver.log
+cat ~/neurosity_logs/eeg_simulator.log
+cat ~/neurosity_logs/eeg_saver.log
 ```
