@@ -1,16 +1,8 @@
 #!/usr/bin/env python3
 """
-Enhanced EEG Integration Test Suite
-
-Comprehensive tests for the EEG pipeline:
-1. Data format & structure validation
-2. Data loss detection
-3. Timestamp continuity
-4. Signal amplitude bounds
-5. File I/O performance
-6. Concurrent node stability
+Enhanced EEG Integration Test Suite (unittest-compatible)
 """
-
+import unittest
 import subprocess
 import time
 import json
@@ -19,52 +11,117 @@ from pathlib import Path
 from datetime import datetime
 import numpy as np
 
+class TestEnhancedEEG(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.duration = 20
+        cls.workspace = Path.home() / 'ros2_ws' / 'src' / '-healthcare_msgs_demonstration'
+        cls.log_dir = Path.home() / 'neurosity_logs'
+        cls.data_file = cls.log_dir / 'eeg_data.jsonl'
+        # Cleanup and start nodes
+        subprocess.run(['bash', '-c', 'pkill -f "neurosity_driver|eeg_saver|eeg_simulator"'], stderr=subprocess.DEVNULL)
+        time.sleep(0.5)
+        for f in cls.log_dir.glob('eeg*.*'):
+            f.unlink()
+        cmd = f"cd {cls.workspace} && SIMULATE=1 NO_BUILD=1 RUN_NODE=1 nohup bash ./start.sh > /tmp/test_start.log 2>&1 &"
+        subprocess.run(cmd, shell=True)
+        time.sleep(cls.duration)
 
-class EnhancedEEGTest:
-    def __init__(self, duration_secs=20, verbose=True):
-        self.duration = duration_secs
-        self.verbose = verbose
-        self.workspace = Path.home() / 'ros2_ws' / 'src' / '-healthcare_msgs_demonstration'
-        self.log_dir = Path.home() / 'neurosity_logs'
-        self.data_file = self.log_dir / 'eeg_data.jsonl'
-        self.results = {'passed': [], 'failed': [], 'warnings': []}
-        
-    def log(self, msg):
-        """Print message if verbose."""
-        if self.verbose:
-            print(msg)
-    
-    def run_all_tests(self):
-        """Execute all tests."""
-        self.log("\n" + "=" * 80)
-        self.log("ENHANCED EEG INTEGRATION TEST SUITE")
-        self.log("=" * 80)
-        self.log(f"Start time: {datetime.now().isoformat()}")
-        
-        # Setup
-        self.log("\n[SETUP] Cleaning up and starting nodes...")
-        self._cleanup()
-        if not self._start_nodes():
-            self.log("FAILED to start nodes")
-            return False
-        
-        # Wait
-        self.log(f"\n[RUN] Running for {self.duration}s...")
-        time.sleep(self.duration)
-        
-        # Teardown
-        self.log("\n[TEARDOWN] Stopping nodes...")
-        self._stop_nodes()
+    @classmethod
+    def tearDownClass(cls):
+        subprocess.run(['bash', '-c', 'pkill -f "neurosity_driver|eeg_saver|eeg_simulator"'], stderr=subprocess.DEVNULL)
         time.sleep(2)
-        
-        # Tests
-        self.log("\n[TESTS] Running validation suite...")
-        self._run_tests()
-        
-        # Report
-        self._report()
-        
-        return len(self.results['failed']) == 0
+
+    def test_file_exists(self):
+        self.assertTrue(self.data_file.exists(), "eeg_data.jsonl does not exist")
+
+    def test_file_content(self):
+        self.assertTrue(self.data_file.exists(), "eeg_data.jsonl does not exist")
+        with open(self.data_file, 'r') as f:
+            first_line = f.readline()
+            self.assertTrue(len(first_line.strip()) > 0, "eeg_data.jsonl is empty")
+
+    def test_message_format(self):
+        required_fields = ['header', 'session_id', 'sample_size', 'eeg', 'quality']
+        with open(self.data_file, 'r') as f:
+            for line in f:
+                msg = json.loads(line)
+                for field in required_fields:
+                    self.assertIn(field, msg)
+                self.assertIn('stamp', msg['header'])
+                self.assertIn('frame_id', msg['header'])
+
+    def test_channel_count(self):
+        with open(self.data_file, 'r') as f:
+            for line in f:
+                msg = json.loads(line)
+                self.assertEqual(len(msg['quality']), 4)
+
+    def test_sample_consistency(self):
+        with open(self.data_file, 'r') as f:
+            for line in f:
+                msg = json.loads(line)
+                expected_len = 4 * msg['sample_size']
+                actual_len = len(msg['eeg'])
+                self.assertEqual(expected_len, actual_len)
+
+    def test_quality_valid(self):
+        with open(self.data_file, 'r') as f:
+            for line in f:
+                msg = json.loads(line)
+                for q in msg['quality']:
+                    self.assertTrue(0.0 <= q <= 1.0)
+
+    def test_no_data_loss(self):
+        with open(self.data_file, 'r') as f:
+            lines = f.readlines()
+        if len(lines) < 2:
+            self.skipTest("Not enough messages to test data loss")
+        first_msg = json.loads(lines[0])
+        expected_samples_per_msg = first_msg['sample_size'] * 4
+        for line in lines:
+            msg = json.loads(line)
+            self.assertEqual(len(msg['eeg']), expected_samples_per_msg)
+
+    def test_timestamp_continuity(self):
+        with open(self.data_file, 'r') as f:
+            lines = f.readlines()
+        if len(lines) < 2:
+            self.skipTest("Not enough messages to test timestamp continuity")
+        prev_time = 0
+        for line in lines:
+            msg = json.loads(line)
+            current_time = msg['header']['stamp']['sec'] + msg['header']['stamp']['nsec'] / 1e9
+            self.assertGreaterEqual(current_time, prev_time)
+            prev_time = current_time
+
+    def test_amplitude_bounds(self):
+        with open(self.data_file, 'r') as f:
+            for line in f:
+                msg = json.loads(line)
+                for sample in msg['eeg']:
+                    self.assertLessEqual(abs(sample), 50)
+
+    def test_write_performance(self):
+        if not self.data_file.exists():
+            self.skipTest("eeg_data.jsonl does not exist")
+        with open(self.data_file, 'r') as f:
+            lines = f.readlines()
+        if len(lines) < 5:
+            self.skipTest("Not enough messages to test write performance")
+        expected_min = max(2, int(self.duration * 4 * 0.5))
+        self.assertGreaterEqual(len(lines), expected_min)
+
+    def test_file_size(self):
+        if not self.data_file.exists():
+            self.skipTest("eeg_data.jsonl does not exist")
+        file_size_kb = self.data_file.stat().st_size / 1024
+        with open(self.data_file, 'r') as f:
+            num_messages = len(f.readlines())
+        self.assertLess(file_size_kb, num_messages * 1.0)
+
+if __name__ == '__main__':
+    unittest.main()
     
     def _cleanup(self):
         """Remove old logs and data."""

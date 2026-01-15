@@ -210,7 +210,7 @@ if [ "$RUN_NODE" -eq 1 ]; then
     if [ "$SIMULATE" -eq 1 ]; then
         echo "Starting EEG SIMULATOR (not real device)..."
         SIM_LOG_FILE="$LOG_DIR/eeg_simulator.log"
-        SIM_SCRIPT="$WORKSPACE/src/-healthcare_msgs_demonstration/eeg_simulator.py"
+        SIM_SCRIPT="$WORKSPACE/src/-healthcare_msgs_demonstration/nodes/eeg_simulator.py"
         
         cd "$WORKSPACE" || { echo "ERROR: Could not cd to $WORKSPACE"; exit 1; }
         
@@ -241,7 +241,7 @@ if [ "$RUN_NODE" -eq 1 ]; then
     # Start eeg_saver node
     echo "Starting eeg_saver node in the background..."
     SAVER_LOG_FILE="$LOG_DIR/eeg_saver.log"
-    SAVER_SCRIPT="$WORKSPACE/src/-healthcare_msgs_demonstration/eeg_saver.py"
+    SAVER_SCRIPT="$WORKSPACE/src/-healthcare_msgs_demonstration/nodes/eeg_saver.py"
     
     cd "$WORKSPACE" || { echo "ERROR: Could not cd to $WORKSPACE"; exit 1; }
     
