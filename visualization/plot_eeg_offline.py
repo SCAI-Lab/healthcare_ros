@@ -23,6 +23,7 @@ if not messages:
     sys.exit(1)
 
 # Plot EEG for the first channel as an example
+SAMPLING_RATE = 256  # Hz (adjust if your simulator uses a different rate)
 samples = []
 for msg in messages:
     eeg = msg['eeg']
@@ -31,10 +32,12 @@ for msg in messages:
     ch1 = eeg[0:len(eeg):4]
     samples.extend(ch1)
 
+times = [i / SAMPLING_RATE for i in range(len(samples))]
+
 plt.figure(figsize=(12, 4))
-plt.plot(samples)
-plt.title('EEG Channel 1 (Offline Plot)')
-plt.xlabel('Sample Index')
+plt.plot(times, samples)
+plt.title(f'EEG Channel 1 (Offline Plot) - Sampling Rate: {SAMPLING_RATE} Hz')
+plt.xlabel('Time (s)')
 plt.ylabel('Amplitude (uV)')
 plt.tight_layout()
 plt.show()

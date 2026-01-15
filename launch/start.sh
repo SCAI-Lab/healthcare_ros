@@ -263,7 +263,7 @@ if [ "$RUN_NODE" -eq 1 ]; then
     # Start EEG Preprocessor node (optional)
     echo "Starting eeg_preprocessor node in the background..."
     PREPROC_LOG_FILE="$LOG_DIR/eeg_preprocessor.log"
-    PREPROC_SCRIPT="$WORKSPACE/src/-healthcare_msgs_demonstration/eeg_preprocessing/preprocessing.py"
+    PREPROC_SCRIPT="$WORKSPACE/src/-healthcare_msgs_demonstration/nodes/eeg_preprocessing/preprocessing.py"
     if [ -f "$PREPROC_SCRIPT" ]; then
         nohup "$VENV_PATH/bin/python3" "$PREPROC_SCRIPT" >> "$PREPROC_LOG_FILE" 2>&1 &
         PREPROC_PID=$!

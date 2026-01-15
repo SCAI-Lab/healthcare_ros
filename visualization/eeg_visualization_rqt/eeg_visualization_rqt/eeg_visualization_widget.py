@@ -1,3 +1,4 @@
+SAMPLING_RATE = 256  # Hz (adjust if needed)
 """EEG Visualization Widget for rqt.
 
 This widget subscribes to raw EEG (/neurosity/eeg) and preprocessed EEG
@@ -220,7 +221,7 @@ class EEGVisualizationPlugin(Plugin):
         """Create a matplotlib figure with appropriate styling."""
         fig = Figure(figsize=(6, 4), dpi=100)
         ax = fig.add_subplot(111)
-        ax.set_xlabel("Sample")
+        ax.set_xlabel("Time (s)")
         ax.set_ylabel("Amplitude (µV)")
         ax.grid(True, alpha=0.3)
         fig.tight_layout()
@@ -241,20 +242,24 @@ class EEGVisualizationPlugin(Plugin):
         raw_data = self.raw_buffer.get_data()
         processed_data = self.processed_buffer.get_data()
 
+        # Prepare time axes
+        raw_times = np.arange(len(raw_data)) / SAMPLING_RATE if len(raw_data) > 0 else []
+        processed_times = np.arange(len(processed_data)) / SAMPLING_RATE if len(processed_data) > 0 else []
+
         # Update raw plot
         self.ax_raw.clear()
         if len(raw_data) > 0:
-            self.ax_raw.plot(raw_data, linewidth=0.8, color="blue", alpha=0.8)
-            self.ax_raw.set_title("Raw EEG Signal")
+            self.ax_raw.plot(raw_times, raw_data, linewidth=0.8, color="blue", alpha=0.8)
+            self.ax_raw.set_title(f"Raw EEG Signal - Sampling Rate: {SAMPLING_RATE} Hz")
         else:
             self.ax_raw.text(
                 0.5, 0.5, "No data", ha="center", va="center", transform=self.ax_raw.transAxes
             )
-            self.ax_raw.set_title("Raw EEG Signal (Waiting...)")
+            self.ax_raw.set_title(f"Raw EEG Signal (Waiting...) - Sampling Rate: {SAMPLING_RATE} Hz")
 
         if self.auto_scale_chk.isChecked() and len(raw_data) > 0:
             self.ax_raw.autoscale_view()
-        self.ax_raw.set_xlabel("Sample")
+        self.ax_raw.set_xlabel("Time (s)")
         self.ax_raw.set_ylabel("Amplitude (µV)")
         self.ax_raw.grid(True, alpha=0.3)
         self.fig_raw.tight_layout()
@@ -263,17 +268,17 @@ class EEGVisualizationPlugin(Plugin):
         # Update processed plot
         self.ax_processed.clear()
         if len(processed_data) > 0:
-            self.ax_processed.plot(processed_data, linewidth=0.8, color="green", alpha=0.8)
-            self.ax_processed.set_title("Preprocessed EEG Signal")
+            self.ax_processed.plot(processed_times, processed_data, linewidth=0.8, color="green", alpha=0.8)
+            self.ax_processed.set_title(f"Preprocessed EEG Signal - Sampling Rate: {SAMPLING_RATE} Hz")
         else:
             self.ax_processed.text(
                 0.5, 0.5, "No data", ha="center", va="center", transform=self.ax_processed.transAxes
             )
-            self.ax_processed.set_title("Preprocessed EEG Signal (Waiting...)")
+            self.ax_processed.set_title(f"Preprocessed EEG Signal (Waiting...) - Sampling Rate: {SAMPLING_RATE} Hz")
 
         if self.auto_scale_chk.isChecked() and len(processed_data) > 0:
             self.ax_processed.autoscale_view()
-        self.ax_processed.set_xlabel("Sample")
+        self.ax_processed.set_xlabel("Time (s)")
         self.ax_processed.set_ylabel("Amplitude (µV)")
         self.ax_processed.grid(True, alpha=0.3)
         self.fig_processed.tight_layout()

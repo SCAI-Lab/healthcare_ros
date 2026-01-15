@@ -1,11 +1,7 @@
 import mne
 import numpy as np
-from logger import Logger
-import os
-
 import logging
 import os
-import mne
 
 
 class EEGPreprocessingTools:
@@ -27,10 +23,18 @@ class EEGPreprocessingTools:
         self.log_file = log_file
 
         if logger is None:
-            # Use custom Logger class if no logger is passed
-            self.logger = Logger(
-                log_dir=self.log_dir, log_file=self.log_file
-            ).get_logger()
+            # Set up default logging to file and console
+            os.makedirs(self.log_dir, exist_ok=True)
+            log_path = os.path.join(self.log_dir, self.log_file)
+            logging.basicConfig(
+                level=logging.INFO,
+                format='%(asctime)s %(levelname)s %(message)s',
+                handlers=[
+                    logging.FileHandler(log_path),
+                    logging.StreamHandler()
+                ]
+            )
+            self.logger = logging.getLogger("EEGPreprocessingTools")
         else:
             # Use the passed logger
             self.logger = logger

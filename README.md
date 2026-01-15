@@ -8,7 +8,7 @@
 - `neurosity_driver`: ROS2 Python node that connects to Neurosity SDK and publishes `/neurosity/eeg` and `/neurosity/eeg_info`.
 - `eeg_saver.py`: Subscriber node that saves `healthcare_msgs/EEG` messages to `~/neurosity_logs/eeg_data.jsonl` (JSONL: one JSON object per line).
 - `eeg_simulator.py`: Optional simulator that publishes synthetic EEG data in the same `healthcare_msgs` format for testing without hardware.
-- `start.sh`: Orchestration script that prepares the environment, builds packages (if needed), and starts the driver/simulator + saver.
+- `launch/start.sh`: Orchestration script that prepares the environment, builds packages (if needed), and starts the driver/simulator + saver.
 - `test_eeg_integration.py`: Automated integration test that validates the entire EEG pipeline (data format, channel count, sample consistency, quality scores).
 - `visualize_eeg.py`: Visualization and analysis tool that generates time-domain and frequency-spectrum plots from stored EEG data.
 
@@ -27,10 +27,10 @@ cd ~/ros2_ws/src
 ```bash
 cd ~/ros2_ws/src/-healthcare_msgs_demonstration
 # Run with real device (requires .env credentials and device online)
-./start.sh
+launch/start.sh
 
 # Or run in SIMULATOR mode (no device needed):
-SIMULATE=1 ./start.sh
+SIMULATE=1 launch/start.sh
 ```
 
 4. Monitor logs and data:
@@ -80,7 +80,7 @@ source install/setup.bash
 ```
 
 **Simulator usage (recommended for testing)**
-- Start the simulator with `SIMULATE=1 ./start.sh` — it will publish EEG messages to `/neurosity/eeg` in the same `healthcare_msgs` format and `eeg_saver` will record them to `~/neurosity_logs/eeg_data.jsonl`.
+- Start the simulator with `SIMULATE=1 launch/start.sh` — it will publish EEG messages to `/neurosity/eeg` in the same `healthcare_msgs` format and `eeg_saver` will record them to `~/neurosity_logs/eeg_data.jsonl`.
 
 **Testing & Validation**
 - **Automated integration test:** Run the full pipeline test (simulator + saver) and validate data format, structure, and completeness:
@@ -134,7 +134,7 @@ Then run the pipeline as usual.
 - If visualization script fails with `ModuleNotFoundError: No module named 'matplotlib'`, install it: `pip install matplotlib numpy`
 
 **Files added by this demo**
-- `start.sh` — setup + start orchestration
+- `launch/start.sh` — setup + start orchestration
 - `eeg_saver.py` — subscriber & data recorder
 - `eeg_simulator.py` — test data publisher
 

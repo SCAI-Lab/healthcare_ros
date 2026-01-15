@@ -2,10 +2,10 @@
 """Non-interactive EEG Preprocessing ROS2 node.
 
 This module implements a lightweight preprocessing node that subscribes to
-`/neurosity/eeg` (type: `healthcare_msgs.msg.EEG`), optionally applies a
+`/eeg/raw` (type: `healthcare_msgs.msg.EEG`), optionally applies a
 band-pass filter and downsampling, rounds values to reduce payload size, and
 publishes the processed messages on a configurable topic (default
-`/neurosity/eeg_processed`).
+`/eeg/processed`).
 
 This file intentionally contains no console prompts or interactive input so it
 can be used inside headless deployments and ROS launch scripts.
@@ -57,7 +57,7 @@ class EEGPreprocessor(Node):
         self.declare_parameter("sampling_rate", 256.0)
         self.declare_parameter("downsample_factor", 1)
         self.declare_parameter("round_precision", 3)
-        self.declare_parameter("publish_topic", "/neurosity/eeg_processed")
+        self.declare_parameter("publish_topic", "/eeg/processed")
 
         self.bandpass_enabled = self.get_parameter("bandpass_enabled").value
         self.l_freq = float(self.get_parameter("l_freq").value)
@@ -68,9 +68,9 @@ class EEGPreprocessor(Node):
         self.publish_topic = str(self.get_parameter("publish_topic").value)
 
         self.pub = self.create_publisher(EEG, self.publish_topic, 10)
-        self.sub = self.create_subscription(EEG, "/neurosity/eeg", self._on_eeg, 10)
+        self.sub = self.create_subscription(EEG, "/eeg/raw", self._on_eeg, 10)
 
-        self.get_logger().info(f"EEGPreprocessor initialized. Publishing to: {self.publish_topic}")
+        self.get_logger().info(f"EEGPreprocessor initialized. Subscribing to: /eeg/raw, Publishing to: {self.publish_topic}")
 
     def _on_eeg(self, msg: EEG) -> None:
         try:
