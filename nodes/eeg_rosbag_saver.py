@@ -5,7 +5,6 @@ This node acts as a wrapper to start/stop rosbag recording as part of the pipeli
 """
 import subprocess
 import signal
-import sys
 import os
 
 import rclpy

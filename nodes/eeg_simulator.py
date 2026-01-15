@@ -12,11 +12,9 @@ Simulates 4 channels of EEG data with realistic brain signal characteristics:
 """
 
 import math
-import time
 import rclpy
 from rclpy.node import Node
 from healthcare_msgs.msg import EEG, EEGInfo
-from pathlib import Path
 
 
 class EEGSimulator(Node):

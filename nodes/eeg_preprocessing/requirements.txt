@@ -1,0 +1,6 @@
+# requirements.txt for EEG Preprocessing pipeline
+mne
+numpy
+scipy
+rclpy
+# Add any other dependencies as needed

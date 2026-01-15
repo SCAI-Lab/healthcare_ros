@@ -1,5 +1,4 @@
 import mne
-import numpy as np
 import logging
 import os
 
@@ -51,7 +50,8 @@ class EEGPreprocessingTools:
 
         Returns:
             mne.io.Raw: The EEG data after artifact removal.
-            mne.preprocessing.ICA: The ICA object used for artifact removal.
+        Note:
+            The ICA object is not returned. If you need the ICA object, modify the function to return it explicitly.
         """
         self.logger.info("Starting ICA computation.")
 
@@ -95,10 +95,10 @@ class EEGPreprocessingTools:
             middle_1 (float): The upper frequency limit for the first filter.
             middle_2 (float): The lower frequency limit for the second filter.
             upper (float): The upper frequency limit in Hz for the second filter.
-            combine_bands (bool): If True, combines two frequency bands into one output.
+            combine_bands (bool): If True, applies sequential filters for two bands (e.g., Theta and Alpha).
 
         Returns:
-            mne.io.Raw: The filtered EEG data (optionally combined bands).
+            mne.io.Raw: The filtered EEG data. If combine_bands=True, the output is the result of sequentially applying both band-pass filters.
         """
 
         # Inform about the custom filter range
@@ -136,9 +136,7 @@ class EEGPreprocessingTools:
 
         Parameters:
             raw (mne.io.Raw): The EEG data to process.
-            reference (str or list of str): The reference channel(s).
-                                            Pass a string for a single channel
-                                            or a list for multiple channels.
+            reference (Union[str, List[str]]): The reference channel(s). Pass a string for a single channel or a list for multiple channels.
 
         Returns:
             mne.io.Raw: The re-referenced raw data.
