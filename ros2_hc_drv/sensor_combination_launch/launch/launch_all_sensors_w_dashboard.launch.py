@@ -1,3 +1,7 @@
+"""
+Copyright (c) 2026 TCUL8
+All rights reserved.
+"""
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
@@ -28,10 +32,11 @@ def generate_launch_description():
 
     corsano_node=Node(
         package = 'corsano_ros',
-        name = 'corsano_ros',
-        executable = 'corsano_wrapper.py',
-        parameters = [config_corsano]
-    )
+        """
+        Sensor combination launch file with dashboard.
+
+        Copyright (c) 2026 TCUL8. All rights reserved.
+        """
     ld.add_action(corsano_node)
 
     config_sensomative = os.path.join(

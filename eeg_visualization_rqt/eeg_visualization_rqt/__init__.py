@@ -1,0 +1,1 @@
+"""EEG Visualization RQT plugin."""

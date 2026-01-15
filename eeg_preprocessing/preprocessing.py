@@ -1,307 +1,134 @@
-"""
-Author: Tjalf Caesar (655646)
-Date: 2025-01-06
-Description: This preprocessing model has been trained on the following dataset: EEG Motor Movement/Imagery Dataset.
+#!/usr/bin/env python3
+"""Non-interactive EEG Preprocessing ROS2 node.
+
+This module implements a lightweight preprocessing node that subscribes to
+`/neurosity/eeg` (type: `healthcare_msgs.msg.EEG`), optionally applies a
+band-pass filter and downsampling, rounds values to reduce payload size, and
+publishes the processed messages on a configurable topic (default
+`/neurosity/eeg_processed`).
+
+This file intentionally contains no console prompts or interactive input so it
+can be used inside headless deployments and ROS launch scripts.
 """
 
-from tkinter import FIRST
-import mne
-from scipy.sparse import data
-import data_loader
-from logger import Logger
-import torch
-import torch.optim as optim
+from __future__ import annotations
+
+import math
+from typing import List, Tuple
+
 import numpy as np
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.utils.data import DataLoader, TensorDataset
-from general_plotting import plot_noisy_vs_denoised
-from denosing_network import DenoisingAutoencoderModule
+from scipy.signal import butter, filtfilt, decimate
+
+import rclpy
+from rclpy.node import Node
+
+from healthcare_msgs.msg import EEG
 
 
-# Logging configuration
-LOG_DIRECTORY = "logs"
-LOG_FILE = "preprocessing.log"
-OUTPUT_DIRECTORY_TOOLS = "preprocessed_tools"
-OUTPUT_DIRECTORY_NETWORK = "preprocessed_network"
+def _butter_bandpass_filter(data: np.ndarray, l_freq: float, h_freq: float, fs: float, order: int = 4) -> np.ndarray:
+    nyq = 0.5 * fs
+    if l_freq <= 0 or h_freq <= 0 or l_freq >= h_freq or h_freq >= nyq:
+        return data
+    b, a = butter(order, [l_freq / nyq, h_freq / nyq], btype="band")
+    # apply along axis=1 (time axis) if 2D (channels x samples)
+    if data.ndim == 1:
+        return filtfilt(b, a, data)
+    else:
+        return np.vstack([filtfilt(b, a, row) for row in data])
 
 
-# Create a Logger instance
-app_logger = Logger(log_dir=LOG_DIRECTORY, log_file=LOG_FILE).get_logger()
+def _reshape_eeg(eeg_list: List[float], sample_size: int) -> Tuple[np.ndarray, int]:
+    arr = np.asarray(eeg_list, dtype=float)
+    if sample_size and sample_size > 0 and len(arr) % sample_size == 0:
+        channels = len(arr) // sample_size
+        return arr.reshape((channels, sample_size)), sample_size
+    # fallback: treat as single channel
+    return arr.reshape((1, -1)), arr.shape[0]
 
 
-def set_montage(raw):
-    """
-    Sets a custom montage for the raw EEG data.
+class EEGPreprocessor(Node):
+    def __init__(self):
+        super().__init__("eeg_preprocessor")
 
-    Parameters:
-        raw (mne.io.Raw): The raw EEG data to update.
-    """
-    app_logger.info("Setting custom montage for raw data.")
+        # Parameters (defaults chosen to match simulator/typical EEG)
+        self.declare_parameter("bandpass_enabled", True)
+        self.declare_parameter("l_freq", 1.0)
+        self.declare_parameter("h_freq", 40.0)
+        self.declare_parameter("sampling_rate", 256.0)
+        self.declare_parameter("downsample_factor", 1)
+        self.declare_parameter("round_precision", 3)
+        self.declare_parameter("publish_topic", "/neurosity/eeg_processed")
+
+        self.bandpass_enabled = self.get_parameter("bandpass_enabled").value
+        self.l_freq = float(self.get_parameter("l_freq").value)
+        self.h_freq = float(self.get_parameter("h_freq").value)
+        self.sampling_rate = float(self.get_parameter("sampling_rate").value)
+        self.downsample_factor = int(self.get_parameter("downsample_factor").value)
+        self.round_precision = int(self.get_parameter("round_precision").value)
+        self.publish_topic = str(self.get_parameter("publish_topic").value)
+
+        self.pub = self.create_publisher(EEG, self.publish_topic, 10)
+        self.sub = self.create_subscription(EEG, "/neurosity/eeg", self._on_eeg, 10)
+
+        self.get_logger().info(f"EEGPreprocessor initialized. Publishing to: {self.publish_topic}")
+
+    def _on_eeg(self, msg: EEG) -> None:
+        try:
+            eeg_array, sample_size = _reshape_eeg(list(msg.eeg), int(msg.sample_size))
+
+            # eeg_array shape: (channels, samples)
+            if self.bandpass_enabled:
+                eeg_array = _butter_bandpass_filter(eeg_array, self.l_freq, self.h_freq, self.sampling_rate)
+
+            if self.downsample_factor and self.downsample_factor > 1:
+                # decimate along time axis
+                eeg_array = decimate(eeg_array, self.downsample_factor, axis=1, zero_phase=True)
+
+            # Round to reduce payload size
+            if self.round_precision >= 0:
+                factor = 10 ** self.round_precision
+                eeg_array = np.round(eeg_array * factor) / factor
+
+            # Prepare new message preserving header/session_id
+            out = EEG()
+            out.header = msg.header
+            out.session_id = msg.session_id
+            out.sample_size = int(eeg_array.shape[1])
+            out.eeg = [float(x) for x in eeg_array.flatten().tolist()]
+
+            # Downsample quality if present (simple approach: average quality across grouped samples)
+            try:
+                quality = list(msg.quality)
+                if quality:
+                    # keep same length as channels; prefer per-channel quality only
+                    # If original quality matched samples, resampling would be needed; here we keep channel-wise quality if possible
+                    if len(quality) == eeg_array.shape[0]:
+                        out.quality = [float(round(q, 2)) for q in quality]
+                    else:
+                        # fallback: take average quality and duplicate per channel
+                        avgq = float(round(sum(map(float, quality)) / max(len(quality), 1), 2))
+                        out.quality = [avgq for _ in range(eeg_array.shape[0])]
+                else:
+                    out.quality = []
+            except Exception:
+                out.quality = []
+
+            self.pub.publish(out)
+
+        except Exception as e:
+            self.get_logger().error(f"Error processing EEG message: {e}")
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = EEGPreprocessor()
     try:
-        available_channels = [
-            "Fc5.",
-            "Fc3.",
-            "Fc1.",
-            "Fcz.",
-            "Fc2.",
-            "Fc4.",
-            "Fc6.",
-            "C5..",
-            "C3..",
-            "C1..",
-            "Cz..",
-            "C2..",
-            "C4..",
-            "C6..",
-            "Cp5.",
-            "Cp3.",
-            "Cp1.",
-            "Cpz.",
-            "Cp2.",
-            "Cp4.",
-            "Cp6.",
-            "Fp1.",
-            "Fpz.",
-            "Fp2.",
-            "Af7.",
-            "Af3.",
-            "Afz.",
-            "Af4.",
-            "Af8.",
-            "F7..",
-            "F5..",
-            "F3..",
-            "F1..",
-            "Fz..",
-            "F2..",
-            "F4..",
-            "F6..",
-            "F8..",
-            "Ft7.",
-            "Ft8.",
-            "T7..",
-            "T8..",
-            "T9..",
-            "T10.",
-            "Tp7.",
-            "Tp8.",
-            "P7..",
-            "P5..",
-            "P3..",
-            "P1..",
-            "Pz..",
-            "P2..",
-            "P4..",
-            "P6..",
-            "P8..",
-            "Po7.",
-            "Po3.",
-            "Poz.",
-            "Po4.",
-            "Po8.",
-            "O1..",
-            "Oz..",
-            "O2..",
-            "Iz..",
-        ]
-
-        channel_positions = {
-            channel: [i, i + 0.1, i + 0.2]
-            for i, channel in enumerate(available_channels)
-        }
-        montage = mne.channels.make_dig_montage(
-            ch_pos=channel_positions, coord_frame="head"
-        )
-        raw.set_montage(montage, on_missing="ignore")
-        app_logger.info("Montage set successfully.")
-    except Exception as e:
-        app_logger.error(f"Error setting montage: {e}")
-        raise
-
-
-
-
-def perform_preprocessing(raw_dictionary):
-    app_logger.info("Starting preprocessing by preprocessing tools.")
-    preprocessed_data_dictionary = {}
-
-    # Import the EEGPreprocessing class
-    from preprocessing_tools import EEGPreprocessingTools
-
-    preprocessing_tools = EEGPreprocessingTools(logger=app_logger)
-
-    band_passed_choice = input("Bandpass filter: [y/n]: ").strip()
-    ica_choice = input("Apply ica: [y/n]: ").strip()
-
-    # Prompt user for decision
-    print("Select reference method:")
-    print("1. Use centre of the brain")
-    print("2. Use common average")
-    print("n. Skip reference setting")
-
-    reference_choice = input("Set reference channel: [1/2/n]: ").strip()
-
-    # Choose epochs creating method
-    print("Select epochs creating method:")
-    print("1. Create epochs dictionary without any further processing")
-    print("2. Create epochs dictionary with baseline middling")
-    print("n. Skip epochs creation")
-
-    epochs_choice = input("Creating epochs_choice: [1/2/n]: ").strip()
-
-    # Flag to indicate if it's the first subject
-    first_subject = True 
-
-    # Tors the data for the first subject for plotting
-    noisy_data = None
-
-    for subject in raw_dictionary:
-        if first_subject:
-            noisy_data=raw_dictionary[subject].get_data()
-
-        app_logger.info(f"Start preprocessing for subject {subject}.")
-        raw = raw_dictionary[subject]
-
-        set_montage(raw)
-
-        if band_passed_choice == "y":
-            app_logger.info("Applying bandpass filter.")
-            raw = preprocessing_tools.band_filter(raw, 8.0, 12.0, 18.0, 26.0)
-        elif band_passed_choice == "n":
-            app_logger.info("Skipping bandpass filter by choice.")
-
-        else:
-            app_logger.error("Invalid choice. Skipping bandpass filter.")
-
-        if ica_choice == "y":
-            app_logger.info("Applying ica.")
-            raw = preprocessing_tools.apply_ica(raw)
-        elif ica_choice == "n":
-            app_logger.info("Skipping ica by choice.")
-
-        else:
-            app_logger.error("Invalid choice. Skipping ica.")
-
-        if reference_choice == 1:
-            app_logger.info("Using centre of the brain.")
-            raw = preprocessing_tools.set_reference_channel(raw, ["Cz.."])
-
-        elif reference_choice == 2:
-            app_logger.info("Using common average.")
-            raw = preprocessing_tools.set_common_average_as_reference(raw)
-
-        elif reference_choice == "n":
-            app_logger.info("Skipping referencing.")
-
-        else:
-            app_logger.error("Invalid choice. Skipping referencing.")
-
-        preprocessed_data_dictionary[subject] = raw
-
-        # Initialize the EpochsExtractor with the logger
-        from epochs_extractor import EpochsExtractor
-
-        epochs_extractor = EpochsExtractor(app_logger)
-
-        if epochs_choice == 1:
-            app_logger.info("creating epochs dictionary without any further processin.")
-            epochs = epochs_extractor.create_epochs_dictionary(
-                preprocessed_data_dictionary, -1.0, 4.0
-            )
-
-        elif epochs_choice == 2:
-            app_logger.info("Creating epochs dictionary with baseline middling.")
-            epochs = epochs_extractor.create_epochs_dictionary(
-                preprocessed_data_dictionary, -1.0, 4.0
-            )
-
-        elif epochs_choice == "n":
-            app_logger.info("Skipping epochs creation by choice.")
-
-        else:
-            app_logger.error("Invalid choice. Skipping epochs creation.")
-
-         # Plot only for the first subject for presentation purposes.
-        if first_subject:
-            plot_noisy_vs_denoised(noisy_data, raw.get_data(), subject)
-
-            first_subject = False  # Set flag to False after plotting for the first subject
-            app_logger.info("Plotted first subject")
-           
-            # epochs = epochs_extractor.create_epochs_dictionary(preprocessed_data_dictionary, -1.0, 4.0)
-        epochs = epochs_extractor.baseline_middling(
-            preprocessed_data_dictionary, -1.0, 4.0
-        )
-        app_logger.info(f"Created epochs FreigabecompletSmartcompleteed.")
-
-    epochs_extractor.store_preprocessed_to_file(epochs, OUTPUT_DIRECTORY_TOOLS)
-    app_logger.info("Storing epochs to file completed.")
-
-
-
-
-def main():
-    """
-    The main function with dynamic decision-making over the console.
-    """
-    app_logger.info("Starting preprocessing script.")
-
-    try:
-
-        # Choose epochs creating method
-        print("Select mode:")
-        print("1. Debugging")
-        print("2. Production")
-        mode_choice = input("Set mode: [1/2]: ").strip()
-
-        # Load raw EEG data
-        from data_loader import DataLoader
-
-        data_loader = DataLoader(app_logger)
-
-        if mode_choice == "1":
-            app_logger.info("Using debugging mode.")
-            raw_dictionary = data_loader.load_data_from_list(
-                [1, 2, 3, 4], [1, 2, 3, 4, 7, 8, 11, 12]
-            )
-
-        elif mode_choice == "2":
-            app_logger.info("Starting production mode.")
-            # Load the whole dataset.
-            raw_dictionary = data_loader.load_all([1, 2, 3, 4, 7, 8, 11, 12])
-
-        else:
-            app_logger.error(f"Invalid choice: {mode_choice}. Exit program.")
-            return
-
-        # Prompt user for decision
-        print("Select preprocessing method:")
-        print("1. Use Denoising Network")
-        print("2. Use Preprocessing Tools")
-
-        choice = input("Enter your choice (1 or 2): ").strip()
-
-        if choice == "1":
-            app_logger.info("Using denoising network for preprocessing.")
-            preprocessed_data_dictionary = use_denoising_network(
-                raw_dictionary, mode_choice
-            )
-        elif choice == "2":
-            app_logger.info("Using preprocessing tools for preprocessing.")
-            preprocessed_data_dictionary = use_preprocessing_tools(raw_dictionary)
-        else:
-            app_logger.error("Invalid choice. Exiting the script.")
-            print(
-                "Invalid choice. Please restart the script and select a valid option."
-            )
-            return
-
-        app_logger.info("Preprocessing completed successfully.")
-
-    except Exception as e:
-        app_logger.error(f"Error during preprocessing: {e}")
-        raise
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        node.get_logger().info("Shutting down EEGPreprocessor")
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
 
 
 if __name__ == "__main__":

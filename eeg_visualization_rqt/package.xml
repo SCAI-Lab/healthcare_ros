@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>eeg_visualization_rqt</name>
+  <version>0.0.1</version>
+  <description>RQT plugin for visualizing raw and preprocessed EEG data side-by-side</description>
+  <maintainer email="tjalf@example.com">tjalf</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <depend>rclpy</depend>
+  <depend>rqt_gui</depend>
+  <depend>rqt_gui_py</depend>
+  <depend>healthcare_msgs</depend>
+  <depend>python_qt_binding</depend>
+  <depend>numpy</depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <exec_depend>qt_gui_py_common</exec_depend>
+
+  <export>
+    <rqt_gui plugin="${prefix}/resource/eeg_visualization_rqt.xml"/>
+  </export>
+</package>

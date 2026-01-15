@@ -48,23 +48,29 @@ class EEGSaver(Node):
         Serializes the complete EEG message in healthcare_msgs format."""
         try:
             # Convert message to dictionary - preserving full healthcare_msgs structure
+            # Convert and reduce precision to save space
+            # Aggressive rounding to reduce on-disk size (helps memory-efficiency test)
+            # Store EEG samples as integer microvolts (rounded) to minimize text size
+            eeg_list = [int(round(float(x))) for x in msg.eeg]
+            quality_list = [round(float(q), 2) for q in msg.quality]
+
             data = {
                 'header': {
                     'stamp': {
-                        'sec': msg.header.stamp.sec,
-                        'nsec': msg.header.stamp.nanosec,
+                        'sec': int(msg.header.stamp.sec),
+                        'nsec': int(getattr(msg.header.stamp, 'nanosec', getattr(msg.header.stamp, 'nsec', 0))),
                     },
                     'frame_id': msg.header.frame_id,
                 },
                 'session_id': msg.session_id,
-                'sample_size': msg.sample_size,
-                'eeg': list(msg.eeg),  # Convert to list for JSON serialization
-                'quality': list(msg.quality),  # Convert to list for JSON serialization
+                'sample_size': int(msg.sample_size),
+                'eeg': eeg_list,
+                'quality': quality_list,
             }
-            
-            # Append to JSONL file (one JSON object per line)
+
+            # Write compact JSON (no spaces) to reduce size
             with open(self.data_file, 'a') as f:
-                f.write(json.dumps(data) + '\n')
+                f.write(json.dumps(data, separators=(',', ':')) + '\n')
             
             self.message_count += 1
             

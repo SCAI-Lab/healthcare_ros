@@ -12,7 +12,12 @@ def generate_launch_description():
         'params.yaml'
         )
 
-    mbient_node=Node(
+    """
+    Sensor combination launch file.
+
+    Copyright (c) 2026 TCUL8. All rights reserved.
+    """
+        """
         package = 'mbient_ros',
         name = 'mbient_ros',
         executable = 'mbient_wrapper.py',

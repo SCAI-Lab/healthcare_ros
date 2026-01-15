@@ -1,13 +1,7 @@
 #!/usr/bin/env bash
 
-# Optimiertes Start-Skript (Deutsch):
-# - aktiviert das Python-venv
-# - sourct ROS2 (konfigurierbar über ROS_DISTRO)
-# - installiert fehlende Python-Build-Dependencies in venv (empy u.a.)
-# - führt `rosdep install` aus (Systemabhängigkeiten)
-# - baut workspace falls nötig (healthcare_msgs, neurosity_driver)
-# - sourct install/setup.bash
-# - optional: startet den Node mit 'run'
+
+# Native start script: activates venv, sources ROS2, builds workspace if needed, and can launch nodes or rqt.
 
 set -euo pipefail
 
@@ -21,16 +15,19 @@ usage() {
     cat <<EOF
 Usage: $0 [options] [command]
 
-Options (Umgebungsvariablen unterstützt):
-  ROS_DISTRO=humble        setze ROS 2 Distribution (default: $ROS_DISTRO)
-  VENV_PATH=/path/to/venv   virtuellen Python-Environment Pfad (default: $VENV_PATH)
-  WORKSPACE=/path/to/ws     Workspace Pfad (default: $WORKSPACE)
-  REBUILD=1                 zwinge colcon rebuild
-  NO_BUILD=1                überspringe Build-Schritt
+Commands:
+  run         Start neurosity_driver node (ros2 run neurosity_driver neurosity_driver)
+  rqt         Start rqt with correct overlays
+  help        Show this help
 
+Environment variables:
+  VENV_PATH   Path to Python venv (default: $VENV_PATH)
+  WORKSPACE   Path to ROS2 workspace (default: $WORKSPACE)
+  ROS_DISTRO  ROS2 distro (default: $ROS_DISTRO)
 Commands:
   run                      nach Setup den node `neurosity_driver` starten (ros2 run)
   help                     diese Hilfe anzeigen
+  rqt                      starte rqt mit korrekten ROS2 Overlays
 
 Beispiel:
   ROS_DISTRO=humble VENV_PATH=~/venv $0 run
@@ -39,6 +36,42 @@ EOF
 
 if [ "${1:-}" = "help" ] || [ "${1:-}" = "--help" ]; then
     usage
+    exit 0
+fi
+
+if [ "${1:-}" = "rqt" ]; then
+    echo "Cleaning Snap and VSCode environment variables for rqt..."
+    # Unset all known Snap and VSCode variables
+    unset LD_LIBRARY_PATH
+    unset LOCPATH
+    unset GTK_PATH
+    unset GTK_EXE_PREFIX
+    unset GIO_MODULE_DIR
+    unset XDG_DATA_HOME
+    unset XDG_DATA_DIRS
+    unset GSETTINGS_SCHEMA_DIR
+    unset GTK_IM_MODULE_FILE
+    unset SNAP
+    unset SNAP_NAME
+    unset SNAP_REVISION
+    unset SNAP_ARCH
+    unset SNAP_LIBRARY_PATH
+    unset SNAP_VERSION
+    unset SNAP_DATA
+    unset SNAP_COMMON
+    unset SNAP_USER_COMMON
+    unset SNAP_USER_DATA
+    unset SNAP_INSTANCE_NAME
+    unset SNAP_INSTANCE_KEY
+    unset SNAP_COOKIE
+    unset SNAP_REAL_HOME
+    export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    set +u
+    source /opt/ros/$ROS_DISTRO/setup.bash
+    source "$WORKSPACE/install/setup.bash"
+    set -u
+    export LD_LIBRARY_PATH="/opt/ros/$ROS_DISTRO/lib:$LD_LIBRARY_PATH"
+    rqt
     exit 0
 fi
 
@@ -150,6 +183,20 @@ if [ -f "$WORKSPACE/install/setup.bash" ]; then
     echo "Sourced workspace overlay: $WORKSPACE/install/setup.bash"
 fi
 
+# Always build healthcare_msgs and source overlays before running nodes or rqt
+if [ -d "$WORKSPACE" ]; then
+    cd "$WORKSPACE"
+    echo "Building healthcare_msgs package..."
+    colcon build --packages-select healthcare_msgs || { echo "Failed to build healthcare_msgs"; exit 1; }
+    if [ -f "$WORKSPACE/install/setup.bash" ]; then
+        set +u
+        source "$WORKSPACE/install/setup.bash"
+        set -u
+        echo "Sourced workspace overlay: $WORKSPACE/install/setup.bash"
+    fi
+    cd - >/dev/null
+fi
+
 echo "--- Setup complete. Environment ready. ---"
 
 # Start the node in background by default (can be disabled with RUN_NODE=0)
@@ -202,6 +249,33 @@ if [ "$RUN_NODE" -eq 1 ]; then
     SAVER_PID=$!
     echo "eeg_saver started with PID $SAVER_PID. Logs: $SAVER_LOG_FILE"
     echo "$SAVER_PID" > "$LOG_DIR/eeg_saver.pid"
+    
+    # Start EEG Preprocessor node (optional)
+    echo "Starting eeg_preprocessor node in the background..."
+    PREPROC_LOG_FILE="$LOG_DIR/eeg_preprocessor.log"
+    PREPROC_SCRIPT="$WORKSPACE/src/-healthcare_msgs_demonstration/eeg_preprocessing/preprocessing.py"
+    if [ -f "$PREPROC_SCRIPT" ]; then
+        nohup "$VENV_PATH/bin/python3" "$PREPROC_SCRIPT" >> "$PREPROC_LOG_FILE" 2>&1 &
+        PREPROC_PID=$!
+        echo "eeg_preprocessor started with PID $PREPROC_PID. Logs: $PREPROC_LOG_FILE"
+        echo "$PREPROC_PID" > "$LOG_DIR/eeg_preprocessor.pid"
+    else
+        echo "Preprocessor script not found at $PREPROC_SCRIPT; skipping preprocessor start"
+    fi
+fi
+
+# Optionally launch rqt EEG visualization plugin in container
+RUN_RQT="${RUN_RQT:-0}"
+if [ "$RUN_RQT" -eq 1 ]; then
+    echo "Launching rqt EEG visualization plugin in Docker container..."
+    docker build -t ros2-rqt "$WORKSPACE" || { echo "Docker build failed"; exit 1; }
+    xhost +local:root
+    docker run -it --rm \
+    SIMULATE="${SIMULATE:-1}"  # Default: use EEG simulator. Set SIMULATE=0 for real device.
+        -v /tmp/.X11-unix:/tmp/.X11-unix \
+        -v "$WORKSPACE":/home/devuser/ros2_ws \
+        ros2-rqt bash -c "source /opt/ros/humble/setup.bash && cd /home/devuser/ros2_ws && colcon build && source install/setup.bash && rqt"
+    xhost -local:root
 fi
 
 echo ""
