@@ -240,15 +240,25 @@ if [ "$RUN_NODE" -eq 1 ]; then
     
     # Start eeg_saver node
     echo "Starting eeg_saver node in the background..."
-    SAVER_LOG_FILE="$LOG_DIR/eeg_saver.log"
-    SAVER_SCRIPT="$WORKSPACE/src/-healthcare_msgs_demonstration/nodes/eeg_saver.py"
-    
-    cd "$WORKSPACE" || { echo "ERROR: Could not cd to $WORKSPACE"; exit 1; }
-    
-    nohup "$VENV_PATH/bin/python3" "$SAVER_SCRIPT" >> "$SAVER_LOG_FILE" 2>&1 &
-    SAVER_PID=$!
-    echo "eeg_saver started with PID $SAVER_PID. Logs: $SAVER_LOG_FILE"
-    echo "$SAVER_PID" > "$LOG_DIR/eeg_saver.pid"
+
+    # Default to JSON saver unless USE_ROSBAG=1 is set (handle unset variable safely)
+    if [ "${USE_ROSBAG:-0}" = "1" ]; then
+        echo "Starting EEG rosbag saver node (MCAP)..."
+        SAVER_LOG_FILE="$LOG_DIR/eeg_rosbag_saver.log"
+        SAVER_SCRIPT="$WORKSPACE/src/-healthcare_msgs_demonstration/nodes/eeg_rosbag_saver.py"
+        nohup "$VENV_PATH/bin/python3" "$SAVER_SCRIPT" >> "$SAVER_LOG_FILE" 2>&1 &
+        SAVER_PID=$!
+        echo "eeg_rosbag_saver started with PID $SAVER_PID. Logs: $SAVER_LOG_FILE"
+        echo "$SAVER_PID" > "$LOG_DIR/eeg_rosbag_saver.pid"
+    else
+        echo "Starting EEG JSON saver node..."
+        SAVER_LOG_FILE="$LOG_DIR/eeg_json_saver.log"
+        SAVER_SCRIPT="$WORKSPACE/src/-healthcare_msgs_demonstration/nodes/eeg_json_saver.py"
+        nohup "$VENV_PATH/bin/python3" "$SAVER_SCRIPT" >> "$SAVER_LOG_FILE" 2>&1 &
+        SAVER_PID=$!
+        echo "eeg_json_saver started with PID $SAVER_PID. Logs: $SAVER_LOG_FILE"
+        echo "$SAVER_PID" > "$LOG_DIR/eeg_json_saver.pid"
+    fi
     
     # Start EEG Preprocessor node (optional)
     echo "Starting eeg_preprocessor node in the background..."
@@ -262,6 +272,22 @@ if [ "$RUN_NODE" -eq 1 ]; then
     else
         echo "Preprocessor script not found at $PREPROC_SCRIPT; skipping preprocessor start"
     fi
+fi
+
+# Visualization mode: offline (default), rqt, or none
+VISUALIZATION_MODE="${VISUALIZATION_MODE:-offline}"
+
+if [ "$VISUALIZATION_MODE" = "rqt" ]; then
+    echo "Starting rqt EEG visualization plugin..."
+    # Launch rqt plugin (assume correct overlay sourced)
+    # Ensure the rqt plugin is discoverable in the new location
+    export RQT_PLUGIN_PATH="$WORKSPACE/src/-healthcare_msgs_demonstration/visualization/eeg_visualization_rqt"
+    rqt --standalone eeg_visualization_rqt &
+elif [ "$VISUALIZATION_MODE" = "offline" ]; then
+    echo "Starting offline EEG plotting script..."
+    python3 visualization/plot_eeg_offline.py &
+else
+    echo "Visualization disabled."
 fi
 
 # Optionally launch rqt EEG visualization plugin in container
@@ -290,22 +316,20 @@ if [ "$RUN_NODE" -eq 1 ]; then
         echo ""
         echo "Nodes started:"
         echo "  - eeg_simulator (PID: $(cat $LOG_DIR/eeg_simulator.pid 2>/dev/null || echo '?'))"
-        echo "  - eeg_saver (PID: $(cat $LOG_DIR/eeg_saver.pid 2>/dev/null || echo '?'))"
     else
         echo "Running with REAL NEUROSITY DEVICE"
         echo ""
         echo "Nodes started:"
         echo "  - neurosity_driver (PID: $(cat $LOG_DIR/neurosity_driver.pid 2>/dev/null || echo '?'))"
-        echo "  - eeg_saver (PID: $(cat $LOG_DIR/eeg_saver.pid 2>/dev/null || echo '?'))"
     fi
-    echo ""
-    echo "Logs:"
-    if [ "$SIMULATE" -eq 1 ]; then
-        echo "  - Simulator: tail -f $LOG_DIR/eeg_simulator.log"
+    # Show which saver node is running and its PID/log
+    if [ "${USE_ROSBAG:-0}" = "1" ]; then
+        echo "  - eeg_rosbag_saver (PID: $(cat $LOG_DIR/eeg_rosbag_saver.pid 2>/dev/null || echo '?'))"
+        echo "  - Saver:     tail -f $LOG_DIR/eeg_rosbag_saver.log"
     else
-        echo "  - Driver:    tail -f $LOG_DIR/neurosity_driver.log"
+        echo "  - eeg_json_saver (PID: $(cat $LOG_DIR/eeg_json_saver.pid 2>/dev/null || echo '?'))"
+        echo "  - Saver:     tail -f $LOG_DIR/eeg_json_saver.log"
     fi
-    echo "  - Saver:     tail -f $LOG_DIR/eeg_saver.log"
     echo ""
     echo "EEG data file (JSONL format):"
     echo "  $LOG_DIR/eeg_data.jsonl"
@@ -315,9 +339,17 @@ if [ "$RUN_NODE" -eq 1 ]; then
     echo ""
     echo "Stop all nodes:"
     if [ "$SIMULATE" -eq 1 ]; then
-        echo "  kill \$(cat $LOG_DIR/eeg_simulator.pid) \$(cat $LOG_DIR/eeg_saver.pid)"
+        if [ "${USE_ROSBAG:-0}" = "1" ]; then
+            echo "  kill \$(cat $LOG_DIR/eeg_simulator.pid) \$(cat $LOG_DIR/eeg_rosbag_saver.pid)"
+        else
+            echo "  kill \$(cat $LOG_DIR/eeg_simulator.pid) \$(cat $LOG_DIR/eeg_json_saver.pid)"
+        fi
     else
-        echo "  kill \$(cat $LOG_DIR/neurosity_driver.pid) \$(cat $LOG_DIR/eeg_saver.pid)"
+        if [ "${USE_ROSBAG:-0}" = "1" ]; then
+            echo "  kill \$(cat $LOG_DIR/neurosity_driver.pid) \$(cat $LOG_DIR/eeg_rosbag_saver.pid)"
+        else
+            echo "  kill \$(cat $LOG_DIR/neurosity_driver.pid) \$(cat $LOG_DIR/eeg_json_saver.pid)"
+        fi
     fi
 else
     LOG_DIR="${LOG_DIR:-$HOME/neurosity_logs}"

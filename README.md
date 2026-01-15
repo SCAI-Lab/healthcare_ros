@@ -103,8 +103,15 @@ source install/setup.bash
   - `eeg_frequency_spectrum.png` — FFT plots with frequency band markers (Theta/Alpha/Beta)
   - Console statistics: mean, std, min, max per channel (in µV)
 
-**Simulator usage (recommended for testing)**
-- Start the simulator with `SIMULATE=1 ./start.sh` — it will publish EEG messages to `/neurosity/eeg` in the same `healthcare_msgs` format and `eeg_saver` will record them to `~/neurosity_logs/eeg_data.jsonl`.
+## Data Saving Modes
+
+By default, EEG data is saved in JSON format. To use the rosbag/MCAP saver instead, set the environment variable:
+
+```bash
+export USE_ROSBAG=1
+```
+
+Then run the pipeline as usual.
 
 **Data format**
 - Saved file: `~/neurosity_logs/eeg_data.jsonl`
@@ -134,4 +141,12 @@ source install/setup.bash
 **Next steps / Suggestions**
 - Add a small metadata index file (e.g., `eeg_metadata.json`) alongside `eeg_data.jsonl` to record `EEGInfo` fields published by the driver so consumers can map flattened arrays to channel names.
 - Consider rotating logs and data files after they reach a size threshold.
+
+## Visualization Options
+
+Visualization tools are now located in the `visualization/` folder:
+- Offline plotting: `visualization/plot_eeg_offline.py` (default)
+- rqt plugin: `visualization/eeg_visualization_rqt/` (set `VISUALIZATION_MODE=rqt`)
+
+See `visualization/README.md` for details.
 

@@ -7,6 +7,7 @@ import subprocess
 import time
 import json
 import sys
+import os
 from pathlib import Path
 from datetime import datetime
 import numpy as np
@@ -18,6 +19,8 @@ class TestEnhancedEEG(unittest.TestCase):
         cls.workspace = Path.home() / 'ros2_ws' / 'src' / '-healthcare_msgs_demonstration'
         cls.log_dir = Path.home() / 'neurosity_logs'
         cls.data_file = cls.log_dir / 'eeg_data.jsonl'
+        # Detect if JSON saver is running: file exists and USE_ROSBAG is not set to 1
+        cls.use_json = (os.environ.get('USE_ROSBAG', '0') != '1')
         # Cleanup and start nodes
         subprocess.run(['bash', '-c', 'pkill -f "neurosity_driver|eeg_saver|eeg_simulator"'], stderr=subprocess.DEVNULL)
         time.sleep(0.5)
@@ -33,15 +36,21 @@ class TestEnhancedEEG(unittest.TestCase):
         time.sleep(2)
 
     def test_file_exists(self):
+        if not self.use_json:
+            self.skipTest("JSON saver not in use; skipping JSON file tests.")
         self.assertTrue(self.data_file.exists(), "eeg_data.jsonl does not exist")
 
     def test_file_content(self):
+        if not self.use_json:
+            self.skipTest("JSON saver not in use; skipping JSON file tests.")
         self.assertTrue(self.data_file.exists(), "eeg_data.jsonl does not exist")
         with open(self.data_file, 'r') as f:
             first_line = f.readline()
             self.assertTrue(len(first_line.strip()) > 0, "eeg_data.jsonl is empty")
 
     def test_message_format(self):
+        if not self.use_json:
+            self.skipTest("JSON saver not in use; skipping JSON file tests.")
         required_fields = ['header', 'session_id', 'sample_size', 'eeg', 'quality']
         with open(self.data_file, 'r') as f:
             for line in f:
@@ -52,12 +61,16 @@ class TestEnhancedEEG(unittest.TestCase):
                 self.assertIn('frame_id', msg['header'])
 
     def test_channel_count(self):
+        if not self.use_json:
+            self.skipTest("JSON saver not in use; skipping JSON file tests.")
         with open(self.data_file, 'r') as f:
             for line in f:
                 msg = json.loads(line)
                 self.assertEqual(len(msg['quality']), 4)
 
     def test_sample_consistency(self):
+        if not self.use_json:
+            self.skipTest("JSON saver not in use; skipping JSON file tests.")
         with open(self.data_file, 'r') as f:
             for line in f:
                 msg = json.loads(line)
@@ -66,6 +79,8 @@ class TestEnhancedEEG(unittest.TestCase):
                 self.assertEqual(expected_len, actual_len)
 
     def test_quality_valid(self):
+        if not self.use_json:
+            self.skipTest("JSON saver not in use; skipping JSON file tests.")
         with open(self.data_file, 'r') as f:
             for line in f:
                 msg = json.loads(line)
@@ -73,6 +88,8 @@ class TestEnhancedEEG(unittest.TestCase):
                     self.assertTrue(0.0 <= q <= 1.0)
 
     def test_no_data_loss(self):
+        if not self.use_json:
+            self.skipTest("JSON saver not in use; skipping JSON file tests.")
         with open(self.data_file, 'r') as f:
             lines = f.readlines()
         if len(lines) < 2:
@@ -84,6 +101,8 @@ class TestEnhancedEEG(unittest.TestCase):
             self.assertEqual(len(msg['eeg']), expected_samples_per_msg)
 
     def test_timestamp_continuity(self):
+        if not self.use_json:
+            self.skipTest("JSON saver not in use; skipping JSON file tests.")
         with open(self.data_file, 'r') as f:
             lines = f.readlines()
         if len(lines) < 2:
@@ -96,6 +115,8 @@ class TestEnhancedEEG(unittest.TestCase):
             prev_time = current_time
 
     def test_amplitude_bounds(self):
+        if not self.use_json:
+            self.skipTest("JSON saver not in use; skipping JSON file tests.")
         with open(self.data_file, 'r') as f:
             for line in f:
                 msg = json.loads(line)
@@ -103,6 +124,8 @@ class TestEnhancedEEG(unittest.TestCase):
                     self.assertLessEqual(abs(sample), 50)
 
     def test_write_performance(self):
+        if not self.use_json:
+            self.skipTest("JSON saver not in use; skipping JSON file tests.")
         if not self.data_file.exists():
             self.skipTest("eeg_data.jsonl does not exist")
         with open(self.data_file, 'r') as f:
@@ -113,6 +136,8 @@ class TestEnhancedEEG(unittest.TestCase):
         self.assertGreaterEqual(len(lines), expected_min)
 
     def test_file_size(self):
+        if not self.use_json:
+            self.skipTest("JSON saver not in use; skipping JSON file tests.")
         if not self.data_file.exists():
             self.skipTest("eeg_data.jsonl does not exist")
         file_size_kb = self.data_file.stat().st_size / 1024
