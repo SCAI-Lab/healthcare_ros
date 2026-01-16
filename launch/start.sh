@@ -41,6 +41,10 @@ fi
 
 if [ "${1:-}" = "rqt" ]; then
     echo "Cleaning Snap and VSCode environment variables for rqt..."
+    if [ "$VISUALIZATION_MODE" = "comparison" ]; then
+        echo "Starting offline EEG comparison plotting script..."
+        python3 "$WORKSPACE/src/-healthcare_msgs_demonstration/plots/plot_eeg_comparison.py" &
+    fi
     # Unset all known Snap and VSCode variables
     unset LD_LIBRARY_PATH
     unset LOCPATH
@@ -204,7 +208,7 @@ RUN_NODE="${RUN_NODE:-1}"
 SIMULATE="${SIMULATE:-0}"  # Set SIMULATE=1 to use EEG simulator instead of real device
 
 if [ "$RUN_NODE" -eq 1 ]; then
-    LOG_DIR="${LOG_DIR:-$HOME/neurosity_logs}"
+    LOG_DIR="$WORKSPACE/src/-healthcare_msgs_demonstration/logs"
     mkdir -p "$LOG_DIR"
     
     if [ "$SIMULATE" -eq 1 ]; then
@@ -238,27 +242,23 @@ if [ "$RUN_NODE" -eq 1 ]; then
         echo "$NODE_PID" > "$LOG_DIR/neurosity_driver.pid"
     fi
     
-    # Start eeg_saver node
-    echo "Starting eeg_saver node in the background..."
 
-    # Default to JSON saver unless USE_ROSBAG=1 is set (handle unset variable safely)
-    if [ "${USE_ROSBAG:-0}" = "1" ]; then
-        echo "Starting EEG rosbag saver node (MCAP)..."
-        SAVER_LOG_FILE="$LOG_DIR/eeg_rosbag_saver.log"
-        SAVER_SCRIPT="$WORKSPACE/src/-healthcare_msgs_demonstration/nodes/eeg_rosbag_saver.py"
-        nohup "$VENV_PATH/bin/python3" "$SAVER_SCRIPT" >> "$SAVER_LOG_FILE" 2>&1 &
-        SAVER_PID=$!
-        echo "eeg_rosbag_saver started with PID $SAVER_PID. Logs: $SAVER_LOG_FILE"
-        echo "$SAVER_PID" > "$LOG_DIR/eeg_rosbag_saver.pid"
-    else
-        echo "Starting EEG JSON saver node..."
-        SAVER_LOG_FILE="$LOG_DIR/eeg_json_saver.log"
-        SAVER_SCRIPT="$WORKSPACE/src/-healthcare_msgs_demonstration/nodes/eeg_json_saver.py"
-        nohup "$VENV_PATH/bin/python3" "$SAVER_SCRIPT" >> "$SAVER_LOG_FILE" 2>&1 &
-        SAVER_PID=$!
-        echo "eeg_json_saver started with PID $SAVER_PID. Logs: $SAVER_LOG_FILE"
-        echo "$SAVER_PID" > "$LOG_DIR/eeg_json_saver.pid"
-    fi
+    # Start two EEGSaver nodes: one for raw, one for preprocessed
+    echo "Starting EEG JSON saver node for raw data..."
+    RAW_SAVER_LOG_FILE="$LOG_DIR/eeg_json_saver_raw.log"
+    RAW_SAVER_SCRIPT="$WORKSPACE/src/-healthcare_msgs_demonstration/nodes/eeg_json_saver.py"
+    nohup "$VENV_PATH/bin/python3" "$RAW_SAVER_SCRIPT" --ros-args -p topic:=/eeg/raw -p file_path:="$LOG_DIR/eeg_raw_data.jsonl" >> "$RAW_SAVER_LOG_FILE" 2>&1 &
+    RAW_SAVER_PID=$!
+    echo "eeg_json_saver (raw) started with PID $RAW_SAVER_PID. Logs: $RAW_SAVER_LOG_FILE"
+    echo "$RAW_SAVER_PID" > "$LOG_DIR/eeg_json_saver_raw.pid"
+
+    echo "Starting EEG JSON saver node for preprocessed data..."
+    PREPROC_SAVER_LOG_FILE="$LOG_DIR/eeg_json_saver_preprocessed.log"
+    PREPROC_SAVER_SCRIPT="$WORKSPACE/src/-healthcare_msgs_demonstration/nodes/eeg_json_saver.py"
+    nohup "$VENV_PATH/bin/python3" "$PREPROC_SAVER_SCRIPT" --ros-args -p topic:=/eeg/processed -p file_path:="$WORKSPACE/src/-healthcare_msgs_demonstration/eeg_data/eeg_preprocessed_data.jsonl" >> "$PREPROC_SAVER_LOG_FILE" 2>&1 &
+    PREPROC_SAVER_PID=$!
+    echo "eeg_json_saver (preprocessed) started with PID $PREPROC_SAVER_PID. Logs: $PREPROC_SAVER_LOG_FILE"
+    echo "$PREPROC_SAVER_PID" > "$LOG_DIR/eeg_json_saver_preprocessed.pid"
     
     # Start EEG Preprocessor node (optional)
     echo "Starting eeg_preprocessor node in the background..."
@@ -274,18 +274,18 @@ if [ "$RUN_NODE" -eq 1 ]; then
     fi
 fi
 
-# Visualization mode: offline (default), rqt, or none
-VISUALIZATION_MODE="${VISUALIZATION_MODE:-offline}"
 
-if [ "$VISUALIZATION_MODE" = "rqt" ]; then
+
+# Visualization mode: none (default), comparison, or rqt
+VISUALIZATION_MODE="${VISUALIZATION_MODE:-none}"
+
+if [ "$VISUALIZATION_MODE" = "comparison" ]; then
+    echo "Starting offline EEG comparison plotting script..."
+    python3 plots/plot_eeg_comparison.py &
+elif [ "$VISUALIZATION_MODE" = "rqt" ]; then
     echo "Starting rqt EEG visualization plugin..."
-    # Launch rqt plugin (assume correct overlay sourced)
-    # Ensure the rqt plugin is discoverable in the new location
     export RQT_PLUGIN_PATH="$WORKSPACE/src/-healthcare_msgs_demonstration/visualization/eeg_visualization_rqt"
     rqt --standalone eeg_visualization_rqt &
-elif [ "$VISUALIZATION_MODE" = "offline" ]; then
-    echo "Starting offline EEG plotting script..."
-    python3 visualization/plot_eeg_offline.py &
 else
     echo "Visualization disabled."
 fi
@@ -352,7 +352,7 @@ if [ "$RUN_NODE" -eq 1 ]; then
         fi
     fi
 else
-    LOG_DIR="${LOG_DIR:-$HOME/neurosity_logs}"
+    LOG_DIR="$WORKSPACE/src/-healthcare_msgs_demonstration/eeg_data"
     echo "Nodes are not running (RUN_NODE=0)."
     echo "To enable auto-start, use: RUN_NODE=1 ./start.sh"
     echo ""

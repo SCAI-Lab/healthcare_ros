@@ -21,26 +21,49 @@ from pathlib import Path
 import os
 
 
+
+
 class EEGSaver(Node):
     def __init__(self):
         super().__init__('eeg_saver')
-        
-        # Set up log directory
-        self.log_dir = Path(os.path.expanduser('~/neurosity_logs'))
-        self.log_dir.mkdir(parents=True, exist_ok=True)
-        
-        self.data_file = self.log_dir / 'eeg_data.jsonl'
-        
-        self.get_logger().info(f'EEG Saver initialized. Data will be saved to: {self.data_file}')
-        
-        # Subscribe to the neurosity EEG topic
+        import os
+        REPO_BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        DATA_DIR = os.path.join(REPO_BASE, 'eeg_data')
+        os.makedirs(DATA_DIR, exist_ok=True)
+
+        # Set default file paths for raw and preprocessed data
+        default_raw_path = os.path.join(DATA_DIR, 'eeg_raw_data.jsonl')
+        default_preprocessed_path = os.path.join(DATA_DIR, 'eeg_preprocessed_data.jsonl')
+
+        # Declare parameters for topic and file path (allowing CLI override)
+        self.declare_parameter('topic', '/neurosity/eeg')
+        self.declare_parameter('file_path', default_raw_path)
+
+        # Get parameters after node is fully initialized to ensure CLI overrides are respected
+        topic = self.get_parameter('topic').get_parameter_value().string_value
+        file_path = self.get_parameter('file_path').get_parameter_value().string_value
+
+        # Optionally: update node name for logging clarity (not strictly needed for ROS2, but helps debug)
+        if '/raw' in topic:
+            self._node_name = 'eeg_saver_raw'
+        elif '/processed' in topic:
+            self._node_name = 'eeg_saver_preprocessed'
+        else:
+            self._node_name = 'eeg_saver'
+
+        self.data_file = Path(file_path)
+        self.data_file.parent.mkdir(parents=True, exist_ok=True)
+
+        self.get_logger().info(f'EEG Saver initialized. Subscribing to: {topic}. Data will be saved to: {self.data_file}')
+
+        # Subscribe to the specified EEG topic
         self.subscription = self.create_subscription(
             EEG,
-            '/neurosity/eeg',
+            topic,
             self.eeg_callback,
             10
         )
-        
+
         self.message_count = 0
         
     def eeg_callback(self, msg: EEG):

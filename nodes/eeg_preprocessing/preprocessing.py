@@ -19,9 +19,16 @@ from typing import List, Tuple
 
 import numpy as np
 from scipy.signal import decimate
+import sys
+import os
 
-# Import EEGPreprocessingTools with absolute import for direct script execution
-from nodes.eeg_preprocessing.preprocessing_tools import EEGPreprocessingTools
+# Add the current directory to the Python path to ensure local imports work
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
+
+# Import preprocessing tools directly from current directory
+from preprocessing_tools import EEGPreprocessingTools
 
 import rclpy
 from rclpy.node import Node
@@ -45,12 +52,13 @@ class EEGPreprocessor(Node):
 
         # Declare parameters with defaults
         # Bandpass filtering is always enabled
-        self.declare_parameter("l_freq", 0.5)  # Set default to 0.5 Hz
-        self.declare_parameter("h_freq", 45.0) # Set default to 45 Hz
+        self.declare_parameter("l_freq", 0.5)  # Low frequency cutoff (Hz)
+        self.declare_parameter("h_freq", 45.0) # High frequency cutoff (Hz)
         self.declare_parameter("sampling_rate", 256.0)
         self.declare_parameter("downsample_factor", 1)
         self.declare_parameter("round_precision", 3)
         self.declare_parameter("publish_topic", "/eeg/processed")
+        self.declare_parameter("buffer_duration", 6.0)  # Buffer duration in seconds for filtering (6s for 0.5 Hz)
 
         # Load parameters
         self.l_freq = float(self.get_parameter("l_freq").value)
@@ -59,7 +67,14 @@ class EEGPreprocessor(Node):
         self.downsample_factor = int(self.get_parameter("downsample_factor").value)
         self.round_precision = int(self.get_parameter("round_precision").value)
         self.publish_topic = str(self.get_parameter("publish_topic").value)
+        self.buffer_duration = float(self.get_parameter("buffer_duration").value)
 
+        # Initialize data buffer for temporal filtering
+        # We need enough samples for proper filtering (e.g., 2 seconds = 512 samples at 256 Hz)
+        self.buffer_size = int(self.buffer_duration * self.sampling_rate)
+        self.data_buffer = []  # List of (eeg_array, msg) tuples
+        self.num_channels = None
+        
         # Set up publisher and subscriber
         self.pub = self.create_publisher(EEG, self.publish_topic, 10)
         self.sub = self.create_subscription(EEG, "/eeg/raw", self._on_eeg, 10)
@@ -67,73 +82,119 @@ class EEGPreprocessor(Node):
         # Initialize preprocessing tools
         self.tools = EEGPreprocessingTools()
 
-        self.get_logger().info(f"EEGPreprocessor initialized. Subscribing to: /eeg/raw, Publishing to: {self.publish_topic}")
+        self.get_logger().info(f"EEGPreprocessor initialized. Buffer: {self.buffer_duration}s ({self.buffer_size} samples)")
+        self.get_logger().info(f"Filtering: {self.l_freq}-{self.h_freq} Hz, Publishing to: {self.publish_topic}")
 
     def _on_eeg(self, msg: EEG) -> None:
         """
-        Callback for incoming EEG messages. Applies preprocessing steps and publishes processed data.
+        Callback for incoming EEG messages. Buffers data and applies preprocessing when buffer is full.
 
         Steps:
-            1. Reshape EEG data to (channels, samples).
-            2. Optionally apply band-pass filter (0.5-45 Hz by default).
-            3. Apply common average reference.
-            4. Optionally downsample.
-            5. Optionally round values to reduce payload size.
-            6. Prepare and publish processed EEG message.
+            1. Reshape and add incoming EEG data to buffer
+            2. When buffer reaches target size:
+               a. Concatenate buffered data
+               b. Apply band-pass filter (0.5-45 Hz by default) on full buffer
+               c. Apply common average reference
+               d. Split back into original messages
+               e. Optionally downsample
+               f. Optionally round values
+               g. Publish all processed messages
         """
         try:
-            # Reshape EEG data using tools class
+            # Reshape incoming EEG data
             eeg_array, sample_size = self.tools.reshape_eeg(list(msg.eeg), int(msg.sample_size))
-
-            # Always apply band-pass filter (0.5-45 Hz by default)
-            eeg_array = self.tools.band_filter(
-                eeg_array,
-                lower=self.l_freq,
-                middle_1=self.h_freq,
-                middle_2=self.h_freq,  # No split, just use as upper
-                upper=self.h_freq,
-                combine_bands=False
-            )
-
-            # Apply common average reference using preprocessing tools
-            eeg_array = self.tools.set_common_average_as_reference(eeg_array)
-
-            if self.downsample_factor and self.downsample_factor > 1:
-                # Decimate along time axis (reduces sample count)
-                eeg_array = decimate(eeg_array, self.downsample_factor, axis=1, zero_phase=True)
-
-            # Round to reduce payload size
-            if self.round_precision >= 0:
-                factor = 10 ** self.round_precision
-                eeg_array = np.round(eeg_array * factor) / factor
-
-            # Prepare new message preserving header/session_id
-            out = EEG()
-            out.header = msg.header
-            out.session_id = msg.session_id
-            out.sample_size = int(eeg_array.shape[1])
-            out.eeg = [float(x) for x in eeg_array.flatten().tolist()]
-
-            # Downsample quality if present (simple approach: average quality across grouped samples)
-            try:
-                quality = list(msg.quality)
-                if quality:
-                    # Prefer per-channel quality if possible
-                    if len(quality) == eeg_array.shape[0]:
-                        out.quality = [float(round(q, 2)) for q in quality]
-                    else:
-                        # Fallback: take average quality and duplicate per channel
-                        avgq = float(round(sum(map(float, quality)) / max(len(quality), 1), 2))
-                        out.quality = [avgq for _ in range(eeg_array.shape[0])]
-                else:
-                    out.quality = []
-            except Exception:
-                out.quality = []
-
-            self.pub.publish(out)
-
+            
+            # Initialize num_channels on first message
+            if self.num_channels is None:
+                self.num_channels = eeg_array.shape[0]
+                self.get_logger().info(f"Detected {self.num_channels} EEG channels")
+            
+            # Add to buffer
+            self.data_buffer.append((eeg_array, msg))
+            
+            # Calculate total samples in buffer
+            total_samples = sum(arr.shape[1] for arr, _ in self.data_buffer)
+            
+            # Process when buffer is full enough for filtering
+            if total_samples >= self.buffer_size:
+                self._process_buffer()
+                
         except Exception as e:
             self.get_logger().error(f"Error processing EEG message: {e}")
+            import traceback
+            self.get_logger().error(traceback.format_exc())
+
+    def _process_buffer(self):
+        """
+        Process the accumulated buffer with filtering and publish all messages.
+        """
+        try:
+            # Concatenate all buffered data along time axis
+            all_data = np.concatenate([arr for arr, _ in self.data_buffer], axis=1)
+            
+            # IMPORTANT: Apply common average reference FIRST (on raw data)
+            # This removes common-mode noise before filtering
+            all_data = self.tools.apply_common_average_reference_numpy(all_data)
+            
+            # THEN apply bandpass filter to the referenced data
+            filtered_data = self.tools.apply_bandpass_filter_numpy(
+                all_data,
+                l_freq=self.l_freq,
+                h_freq=self.h_freq,
+                sfreq=self.sampling_rate
+            )
+            
+            # Split back into individual messages and publish
+            current_idx = 0
+            for eeg_array, original_msg in self.data_buffer:
+                segment_length = eeg_array.shape[1]
+                
+                # Extract the corresponding segment from filtered data
+                processed_segment = filtered_data[:, current_idx:current_idx + segment_length]
+                current_idx += segment_length
+                
+                # Optionally downsample
+                if self.downsample_factor and self.downsample_factor > 1:
+                    processed_segment = decimate(processed_segment, self.downsample_factor, axis=1, zero_phase=True)
+                
+                # Round to reduce payload size
+                if self.round_precision >= 0:
+                    factor = 10 ** self.round_precision
+                    processed_segment = np.round(processed_segment * factor) / factor
+                
+                # Prepare output message
+                out = EEG()
+                out.header = original_msg.header
+                out.session_id = original_msg.session_id
+                out.sample_size = int(processed_segment.shape[1])
+                out.eeg = [float(x) for x in processed_segment.flatten().tolist()]
+                
+                # Copy quality scores
+                try:
+                    quality = list(original_msg.quality)
+                    if quality:
+                        if len(quality) == processed_segment.shape[0]:
+                            out.quality = [float(round(q, 2)) for q in quality]
+                        else:
+                            avgq = float(round(sum(map(float, quality)) / max(len(quality), 1), 2))
+                            out.quality = [avgq for _ in range(processed_segment.shape[0])]
+                    else:
+                        out.quality = []
+                except Exception:
+                    out.quality = []
+                
+                # Publish processed message
+                self.pub.publish(out)
+            
+            # Clear buffer after processing
+            self.data_buffer.clear()
+            
+        except Exception as e:
+            self.get_logger().error(f"Error processing buffer: {e}")
+            import traceback
+            self.get_logger().error(traceback.format_exc())
+            # Clear buffer on error to prevent accumulation
+            self.data_buffer.clear()
 
 
 def main(args=None):

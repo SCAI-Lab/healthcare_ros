@@ -1,4 +1,5 @@
 import mne
+import numpy as np
 import logging
 import os
 
@@ -178,3 +179,94 @@ class EEGPreprocessingTools:
         self.logger.info("Common average reference applied.")
 
         return raw
+    
+    def reshape_eeg(self, eeg_flat: list, sample_size: int) -> tuple:
+        """
+        Reshape flat EEG data array to (channels, samples) format.
+        
+        Parameters:
+            eeg_flat (list): Flattened EEG data array
+            sample_size (int): Number of samples per channel
+            
+        Returns:
+            tuple: (eeg_array, sample_size) where eeg_array is shaped (channels, samples)
+        """
+        eeg_array = np.array(eeg_flat, dtype=np.float64)
+        num_channels = len(eeg_array) // sample_size
+        
+        if len(eeg_array) % sample_size != 0:
+            self.logger.warning(f"EEG data length {len(eeg_array)} not evenly divisible by sample_size {sample_size}")
+            # Trim to make it evenly divisible
+            eeg_array = eeg_array[:num_channels * sample_size]
+        
+        eeg_array = eeg_array.reshape(num_channels, sample_size)
+        self.logger.debug(f"Reshaped EEG data to {eeg_array.shape}")
+        
+        return eeg_array, sample_size
+    
+    def apply_bandpass_filter_numpy(self, eeg_array: np.ndarray, l_freq: float, h_freq: float, sfreq: float = 256.0) -> np.ndarray:
+        """
+        Apply bandpass filter to numpy array EEG data (lightweight, no MNE required).
+        
+        Parameters:
+            eeg_array (np.ndarray): EEG data shaped (channels, samples)
+            l_freq (float): Low frequency cutoff in Hz
+            h_freq (float): High frequency cutoff in Hz
+            sfreq (float): Sampling frequency in Hz (default: 256)
+            
+        Returns:
+            np.ndarray: Filtered EEG data with same shape
+        """
+        from scipy.signal import butter, sosfiltfilt
+        
+        n_samples = eeg_array.shape[1]
+        
+        # Check if we have enough samples for proper filtering
+        # Rule of thumb: need at least 3 cycles of the lowest frequency
+        min_samples = int(3 * (sfreq / l_freq))
+        if n_samples < min_samples:
+            self.logger.warning(
+                f"Segment has {n_samples} samples, recommended minimum is {min_samples} "
+                f"for {l_freq} Hz filter. Results may have edge artifacts."
+            )
+        
+        # Design butterworth bandpass filter using second-order sections (more stable)
+        nyq = sfreq / 2.0
+        low = l_freq / nyq
+        high = h_freq / nyq
+        
+        if low <= 0 or high >= 1:
+            self.logger.warning(f"Invalid filter frequencies: {l_freq}-{h_freq} Hz for sfreq={sfreq}")
+            return eeg_array
+        
+        # Use 4th order filter for proper frequency response
+        # With buffering, we have enough samples to handle this
+        filter_order = 4
+        sos = butter(filter_order, [low, high], btype='band', output='sos')
+        
+        # Apply zero-phase filter to each channel using second-order sections
+        filtered = np.zeros_like(eeg_array)
+        for ch_idx in range(eeg_array.shape[0]):
+            filtered[ch_idx, :] = sosfiltfilt(sos, eeg_array[ch_idx, :])
+        
+        self.logger.debug(f"Applied {filter_order}th-order bandpass filter {l_freq}-{h_freq} Hz on {n_samples} samples")
+        return filtered
+    
+    def apply_common_average_reference_numpy(self, eeg_array: np.ndarray) -> np.ndarray:
+        """
+        Apply common average reference to numpy EEG data.
+        
+        Parameters:
+            eeg_array (np.ndarray): EEG data shaped (channels, samples)
+            
+        Returns:
+            np.ndarray: Referenced EEG data with same shape
+        """
+        # Compute mean across all channels for each time point
+        avg_ref = np.mean(eeg_array, axis=0, keepdims=True)
+        
+        # Subtract common average from each channel
+        referenced = eeg_array - avg_ref
+        
+        self.logger.debug("Applied common average reference")
+        return referenced

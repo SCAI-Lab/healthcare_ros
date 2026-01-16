@@ -22,7 +22,7 @@ class EEGSimulator(Node):
         super().__init__('eeg_simulator')
         
         # Publishers
-        self.eeg_pub = self.create_publisher(EEG, '/neurosity/eeg', 10)
+        self.eeg_pub = self.create_publisher(EEG, '/eeg/raw', 10)
         self.eeg_info_pub = self.create_publisher(EEGInfo, '/neurosity/eeg_info', 1)
         
         # Simulation parameters
@@ -54,19 +54,23 @@ class EEGSimulator(Node):
         """Generate realistic EEG-like signal for a channel.
         
         Combines multiple frequency components to simulate brain activity.
+        Each channel has slightly different phase and amplitude for realism.
         """
-        # Alpha waves (8-12 Hz) - primary component
-        alpha = 15.0 * math.sin(2 * math.pi * self.alpha_freq * time_sec)
+        # Add slight phase shift per channel for spatial variation
+        phase_shift = channel * (math.pi / 8)  # Smaller phase difference between channels
         
-        # Beta waves (13-30 Hz) - secondary component
-        beta = 8.0 * math.sin(2 * math.pi * self.beta_freq * time_sec)
+        # Alpha waves (8-12 Hz) - primary component, dominant in posterior regions
+        alpha = 15.0 * math.sin(2 * math.pi * self.alpha_freq * time_sec + phase_shift)
+        
+        # Beta waves (13-30 Hz) - secondary component, more prominent in frontal regions
+        beta = 8.0 * math.sin(2 * math.pi * self.beta_freq * time_sec + phase_shift * 1.5)
         
         # Theta waves (4-8 Hz) - tertiary component
-        theta = 10.0 * math.sin(2 * math.pi * self.theta_freq * time_sec)
+        theta = 10.0 * math.sin(2 * math.pi * self.theta_freq * time_sec + phase_shift * 0.5)
         
-        # Add slight phase shift per channel for realism
-        phase_shift = channel * (math.pi / 4)
-        signal = (alpha + beta + theta) * math.sin(phase_shift)
+        # Combine with channel-specific amplitude variation (±20%)
+        amplitude_factor = 1.0 + 0.2 * math.sin(channel * math.pi / 4)
+        signal = (alpha + beta + theta) * amplitude_factor
         
         # Add small noise
         import random

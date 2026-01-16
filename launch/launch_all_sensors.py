@@ -8,34 +8,29 @@ def generate_launch_description():
     Generates a launch description for the relevant EEG pipeline nodes: Neurosity, OpenBCI, and EEG simulator.
     """
     ld = LaunchDescription()
-    # Add Neurosity node
-    # Example:
-    # neurosity_node = Node(
-    #     package='neurosity_driver',
-    #     name='neurosity_driver',
-    #     executable='neurosity_driver.py',
-    #     parameters=['config/params.yaml']
-    # )
-    # ld.add_action(neurosity_node)
 
-    # Add OpenBCI node
-    # Example:
-    # openbci_node = Node(
-    #     package='openbci_driver',
-    #     name='openbci_driver',
-    #     executable='openbci_driver.py',
-    #     parameters=['config/params.yaml']
-    # )
-    # ld.add_action(openbci_node)
+    # Add EEGSaver node for raw EEG
+    raw_eeg_saver = Node(
+        package='healthcare_msgs_demonstration',
+        executable='eeg_json_saver.py',
+        name='raw_eeg_saver',
+        parameters=[
+            {'topic': '/eeg/raw'},
+            {'file_path': str(os.path.expanduser('~/neurosity_logs/raw_eeg.jsonl'))}
+        ]
+    )
+    ld.add_action(raw_eeg_saver)
 
-    # Add EEG simulator node
-    # Example:
-    # eeg_simulator_node = Node(
-    #     package='eeg_simulator',
-    #     name='eeg_simulator',
-    #     executable='eeg_simulator.py',
-    #     parameters=['config/params.yaml']
-    # )
-    # ld.add_action(eeg_simulator_node)
+    # Add EEGSaver node for preprocessed EEG
+    preprocessed_eeg_saver = Node(
+        package='healthcare_msgs_demonstration',
+        executable='eeg_json_saver.py',
+        name='preprocessed_eeg_saver',
+        parameters=[
+            {'topic': '/eeg/processed'},
+            {'file_path': str(os.path.expanduser('~/neurosity_logs/preprocessed_eeg.jsonl'))}
+        ]
+    )
+    ld.add_action(preprocessed_eeg_saver)
 
     return ld
