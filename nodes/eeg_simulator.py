@@ -72,11 +72,31 @@ class EEGSimulator(Node):
         amplitude_factor = 1.0 + 0.2 * math.sin(channel * math.pi / 4)
         signal = (alpha + beta + theta) * amplitude_factor
         
-        # Add small noise
+        # Add realistic EEG noise components
         import random
-        noise = random.gauss(0, 0.5)
         
-        return signal + noise
+        # 1. White noise (continuous background)
+        white_noise = random.gauss(0, 2.0)
+        
+        # 2. Low-frequency drift (DC offset changes)
+        drift = 5.0 * math.sin(time_sec * 0.1 + channel)
+        
+        # 3. 50/60 Hz powerline interference
+        powerline = 1.5 * math.sin(2 * math.pi * 50 * time_sec)
+        
+        # 4. Muscle artifacts (random bursts)
+        if random.random() < 0.05:  # 5% chance of muscle artifact
+            muscle_artifact = random.gauss(0, 15)
+        else:
+            muscle_artifact = 0
+        
+        # 5. Eye blink artifacts (mainly in frontal channels FP1, FP2)
+        if channel < 2 and random.random() < 0.02:  # 2% chance in frontal channels
+            blink_artifact = random.gauss(0, 30)
+        else:
+            blink_artifact = 0
+        
+        return signal + white_noise + drift + powerline + muscle_artifact + blink_artifact
     
     def publish_eeg(self):
         """Publish a simulated EEG message."""
