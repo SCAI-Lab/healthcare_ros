@@ -18,7 +18,7 @@ class TestEEGRosbagSaver(unittest.TestCase):
             env['AMENT_PREFIX_PATH'] = env.get('AMENT_PREFIX_PATH', '') + ':' + os.path.expanduser('~/ros2_msgs_ws/install')
         # Start the rosbag saver node
         self.proc = subprocess.Popen([
-            'python3', 'nodes/eeg_rosbag_saver.py'
+            'python3', 'nodes/saver/eeg_rosbag_saver.py'
         ], env=env)
         # Wait for some data to be recorded (increased wait time for MCAP creation)
         time.sleep(8)

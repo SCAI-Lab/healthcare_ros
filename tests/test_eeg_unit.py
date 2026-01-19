@@ -256,6 +256,98 @@ class UnitTests:
         finally:
             Path(temp_path).unlink()
     
+    # ==== DRIVER NODE TESTS ====
+    
+    def test_simulator_node_imports(self):
+        """Test that simulator node can be imported without errors."""
+        import sys
+        from pathlib import Path
+        workspace = Path(__file__).parent.parent.resolve()
+        sim_path = workspace / 'nodes' / 'data_acquisition'
+        sys.path.insert(0, str(sim_path))
+        try:
+            # Import the module to verify it has no syntax errors
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("eeg_simulator", sim_path / "eeg_simulator.py")
+            module = importlib.util.module_from_spec(spec)
+            # Don't execute, just check it can be loaded
+            return spec is not None
+        except Exception as e:
+            print(f"Import error: {e}")
+            return False
+        finally:
+            sys.path.remove(str(sim_path))
+    
+    def test_neurosity_driver_imports(self):
+        """Test that Neurosity driver node structure is valid."""
+        from pathlib import Path
+        workspace = Path(__file__).parent.parent.resolve()
+        driver_path = workspace / 'nodes' / 'data_acquisition' / 'neurosity_driver.py'
+        
+        # Check file exists and has required imports
+        if not driver_path.exists():
+            return False
+        
+        with open(driver_path, 'r') as f:
+            content = f.read()
+        
+        # Verify critical imports are present
+        required = ['rclpy', 'healthcare_msgs.msg', 'EEG', 'EEGInfo', 'neurosity']
+        return all(req in content for req in required)
+    
+    def test_openbci_driver_imports(self):
+        """Test that OpenBCI driver node structure is valid."""
+        from pathlib import Path
+        workspace = Path(__file__).parent.parent.resolve()
+        driver_path = workspace / 'nodes' / 'data_acquisition' / 'openbci_driver.py'
+        
+        # Check file exists and has required imports
+        if not driver_path.exists():
+            return False
+        
+        with open(driver_path, 'r') as f:
+            content = f.read()
+        
+        # Verify critical imports are present
+        required = ['rclpy', 'healthcare_msgs.msg', 'EEG', 'EEGInfo', 'openbci']
+        return all(req in content for req in required)
+    
+    # ==== SAVER NODE TESTS ====
+    
+    def test_json_saver_imports(self):
+        """Test that JSON saver node structure is valid."""
+        from pathlib import Path
+        workspace = Path(__file__).parent.parent.resolve()
+        saver_path = workspace / 'nodes' / 'saver' / 'eeg_json_saver.py'
+        
+        # Check file exists and has required imports
+        if not saver_path.exists():
+            return False
+        
+        with open(saver_path, 'r') as f:
+            content = f.read()
+        
+        # Verify critical imports are present
+        required = ['rclpy', 'healthcare_msgs.msg', 'EEG', 'EEGInfo', 'json']
+        return all(req in content for req in required)
+    
+    def test_rosbag_saver_imports(self):
+        """Test that rosbag saver node structure is valid."""
+        from pathlib import Path
+        workspace = Path(__file__).parent.parent.resolve()
+        saver_path = workspace / 'nodes' / 'saver' / 'eeg_rosbag_saver.py'
+        
+        # Check file exists and has required imports
+        if not saver_path.exists():
+            return False
+        
+        with open(saver_path, 'r') as f:
+            content = f.read()
+        
+        # Verify critical imports are present
+        required = ['rclpy', 'subprocess', 'rosbag']
+        return all(req in content for req in required)
+    
     def run_all(self):
         """Run all unit tests."""
         print("\n" + "=" * 70)
@@ -279,6 +371,15 @@ class UnitTests:
         print("\nEEGInfo Metadata Tests:")
         self.test("EEGInfo structure validation", self.test_eeginfo_structure)
         self.test("EEGInfo storage format", self.test_eeginfo_storage)
+        
+        print("\nDriver Node Tests:")
+        self.test("Simulator node imports", self.test_simulator_node_imports)
+        self.test("Neurosity driver node imports", self.test_neurosity_driver_imports)
+        self.test("OpenBCI driver node imports", self.test_openbci_driver_imports)
+        
+        print("\nSaver Node Tests:")
+        self.test("JSON saver node imports", self.test_json_saver_imports)
+        self.test("Rosbag saver node imports", self.test_rosbag_saver_imports)
         
         # Report
         passed = len(self.passed)

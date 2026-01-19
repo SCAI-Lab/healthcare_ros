@@ -94,7 +94,7 @@ class EEGIntegrationTest:
             self.log_dir.mkdir(exist_ok=True)
             
             # Start simulator
-            sim_script = self.workspace / 'nodes' / 'eeg_simulator.py'
+            sim_script = self.workspace / 'nodes' / 'data_acquisition' / 'eeg_simulator.py'
             sim_log = self.log_dir / 'eeg_simulator.log'
             with open(sim_log, 'w') as log_file:
                 sim_proc = subprocess.Popen(
@@ -105,7 +105,7 @@ class EEGIntegrationTest:
                 )
             
             # Start raw data saver
-            saver_script = self.workspace / 'nodes' / 'eeg_json_saver.py'
+            saver_script = self.workspace / 'nodes' / 'saver' / 'eeg_json_saver.py'
             saver_log = self.log_dir / 'eeg_json_saver_raw.log'
             with open(saver_log, 'w') as log_file:
                 saver_proc = subprocess.Popen(
@@ -158,6 +158,9 @@ class EEGIntegrationTest:
             ('Quality scores valid', self._test_quality_valid),
             ('EEGInfo metadata file exists', self._test_info_file_exists),
             ('EEGInfo metadata valid', self._test_info_metadata_valid),
+            ('Simulator in correct directory', self._test_simulator_location),
+            ('Savers in correct directory', self._test_savers_location),
+            ('Acquisition directory structure', self._test_acquisition_structure),
         ]
         
         for test_name, test_func in tests:
@@ -256,6 +259,28 @@ class EEGIntegrationTest:
             return False
         
         return True
+    
+    def _test_simulator_location(self):
+        """Verify simulator is in nodes/data_acquisition/ directory."""
+        sim_path = self.workspace / 'nodes' / 'data_acquisition' / 'eeg_simulator.py'
+        return sim_path.exists()
+    
+    def _test_savers_location(self):
+        """Verify savers are in nodes/saver/ directory."""
+        json_saver = self.workspace / 'nodes' / 'saver' / 'eeg_json_saver.py'
+        rosbag_saver = self.workspace / 'nodes' / 'saver' / 'eeg_rosbag_saver.py'
+        return json_saver.exists() and rosbag_saver.exists()
+    
+    def _test_acquisition_structure(self):
+        """Verify data_acquisition directory contains all drivers."""
+        acq_dir = self.workspace / 'nodes' / 'data_acquisition'
+        required_files = [
+            'eeg_simulator.py',
+            'neurosity_driver.py',
+            'openbci_driver.py',
+            'README.md'
+        ]
+        return all((acq_dir / f).exists() for f in required_files)
     
     def _report(self):
         """Print test results."""

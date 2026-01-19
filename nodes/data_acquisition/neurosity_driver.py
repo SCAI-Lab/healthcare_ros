@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+"""
+Neurosity EEG Driver Node
+
+Connects to a Neurosity headset via WiFi and publishes EEG data to standardized ROS2 topics.
+Requires credentials in .env file.
+"""
 import os
 from dotenv import load_dotenv
 
@@ -82,15 +88,20 @@ class NeurosityEEGDriver(Node):
             info_msg.signal_mode = EEGInfo.SIGNAL_MODE_SURFACE
 
             self.eeg_info_pub.publish(info_msg)
+            self.get_logger().info('Published EEGInfo metadata')
             self.info_published = True
 
 def main(args=None):
     rclpy.init(args=args)
     node = NeurosityEEGDriver()
-    rclpy.spin(node)
-    node.unsubscribe()  # cleanup
-    node.destroy_node()
-    rclpy.shutdown()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        node.get_logger().info('Shutting down Neurosity driver')
+    finally:
+        node.unsubscribe()  # cleanup
+        node.destroy_node()
+        rclpy.shutdown()
 
 if __name__ == "__main__":
     main()

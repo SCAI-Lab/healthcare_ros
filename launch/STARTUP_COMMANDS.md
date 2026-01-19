@@ -25,8 +25,7 @@ Control script behavior with these variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SIMULATE` | `0` | Set to `1` to use EEG simulator instead of real device |
-| `USE_OPENBCI` | `0` | Set to `1` to use OpenBCI device instead of Neurosity |
+| `USE_ACQUISITION` | `0` | Data source: `0`=simulator, `1`=OpenBCI, `2`=Neurosity |
 | `OPENBCI_PORT` | `/dev/ttyUSB0` | Serial port for OpenBCI device |
 | `OPENBCI_CHANNELS` | `8` | Number of OpenBCI channels (8 or 16 with daisy) |
 | `RUN_NODE` | `1` | Set to `0` to only setup environment without starting nodes |
@@ -45,23 +44,31 @@ Control script behavior with these variables:
 2. **Neurosity** - Real EEG headset with WiFi connectivity (requires credentials)
 3. **OpenBCI** - Real EEG board with USB serial connection (requires hardware)
 
+**All data sources publish to standardized topics:**
+- `/eeg/raw` - Raw EEG data messages
+- `/eeg/raw_info` - EEG metadata (channels, sampling rate, electrode positions, etc.)
+- `/eeg/processed` - Preprocessed EEG data (after filtering and CAR)
+- `/eeg/processed_info` - Preprocessed data metadata
+
 ### Run with simulator (no device needed)
 ```bash
-SIMULATE=1 ./launch/start.sh
+USE_ACQUISITION=0 ./launch/start.sh
+# Or simply (0 is default):
+./launch/start.sh
 ```
 
 ### Run with real Neurosity device
 ```bash
-./launch/start.sh
+USE_ACQUISITION=2 ./launch/start.sh
 ```
 *Requires `.env` file with credentials in `ros2_hc_drv/neurosity_driver/.env`*
 
 ### Run with OpenBCI device
 ```bash
-USE_OPENBCI=1 ./launch/start.sh
+USE_ACQUISITION=1 ./launch/start.sh
 
 # With custom port and 16 channels (with daisy board)
-USE_OPENBCI=1 OPENBCI_PORT=/dev/ttyUSB1 OPENBCI_CHANNELS=16 ./launch/start.sh
+USE_ACQUISITION=1 OPENBCI_PORT=/dev/ttyUSB1 OPENBCI_CHANNELS=16 ./launch/start.sh
 ```
 *Requires OpenBCI board connected via USB.*
 
@@ -72,12 +79,12 @@ RUN_NODE=0 ./launch/start.sh
 
 ### Skip building (if already built)
 ```bash
-NO_BUILD=1 SIMULATE=1 ./launch/start.sh
+NO_BUILD=1 USE_ACQUISITION=0 ./launch/start.sh
 ```
 
 ### Run with offline comparison plotting
 ```bash
-SIMULATE=1 VISUALIZATION_MODE=comparison ./launch/start.sh
+USE_ACQUISITION=0 VISUALIZATION_MODE=comparison ./launch/start.sh
 ```
 
 ### Launch rqt for live visualization
@@ -93,7 +100,7 @@ RUN_TESTS=1 RUN_NODE=0 ./launch/start.sh
 
 ### Run tests then start pipeline
 ```bash
-RUN_TESTS=1 SIMULATE=1 ./launch/start.sh
+RUN_TESTS=1 USE_ACQUISITION=0 ./launch/start.sh
 ```
 *Validates system with tests, then starts simulator and full pipeline.*
 
@@ -154,13 +161,13 @@ cp .env.example .env
 
 ### Required for OpenBCI Device
 OpenBCI driver is now integrated into start.sh. Configure via environment variables:
-- `USE_OPENBCI=1` - Enable OpenBCI mode
+- `USE_ACQUISITION=1` - Enable OpenBCI mode
 - `OPENBCI_PORT` - Serial port (default: `/dev/ttyUSB0`)
 - `OPENBCI_CHANNELS` - Number of channels: 8 or 16 (default: 8)
 
 Example:
 ```bash
-USE_OPENBCI=1 OPENBCI_PORT=/dev/ttyUSB1 OPENBCI_CHANNELS=16 ./launch/start.sh
+USE_ACQUISITION=1 OPENBCI_PORT=/dev/ttyUSB1 OPENBCI_CHANNELS=16 ./launch/start.sh
 ```
 
 ### Optional Parameters

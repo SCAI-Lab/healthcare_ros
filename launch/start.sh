@@ -278,8 +278,7 @@ fi
 
 # Start the node in background by default (can be disabled with RUN_NODE=0)
 RUN_NODE="${RUN_NODE:-1}"
-SIMULATE="${SIMULATE:-0}"  # Set SIMULATE=1 to use EEG simulator instead of real device
-USE_OPENBCI="${USE_OPENBCI:-0}"  # Set USE_OPENBCI=1 to use OpenBCI device
+USE_ACQUISITION="${USE_ACQUISITION:-0}"  # 0=simulator, 1=OpenBCI, 2=Neurosity
 OPENBCI_PORT="${OPENBCI_PORT:-/dev/ttyUSB0}"  # OpenBCI serial port
 OPENBCI_CHANNELS="${OPENBCI_CHANNELS:-8}"  # OpenBCI channel count (8 or 16)
 
@@ -287,10 +286,10 @@ if [ "$RUN_NODE" -eq 1 ]; then
     LOG_DIR="$PROJECT_ROOT/logs"
     mkdir -p "$LOG_DIR"
     
-    if [ "$SIMULATE" -eq 1 ]; then
+    if [ "$USE_ACQUISITION" -eq 0 ]; then
         echo "Starting EEG SIMULATOR (not real device)..."
         SIM_LOG_FILE="$LOG_DIR/eeg_simulator.log"
-        SIM_SCRIPT="$PROJECT_ROOT/nodes/eeg_simulator.py"
+        SIM_SCRIPT="$PROJECT_ROOT/nodes/data_acquisition/eeg_simulator.py"
         
         cd "$WORKSPACE" || { echo "ERROR: Could not cd to $WORKSPACE"; exit 1; }
         
@@ -298,7 +297,7 @@ if [ "$RUN_NODE" -eq 1 ]; then
         SIM_PID=$!
         echo "EEG simulator started with PID $SIM_PID. Logs: $SIM_LOG_FILE"
         echo "$SIM_PID" > "$LOG_DIR/eeg_simulator.pid"
-    elif [ "$USE_OPENBCI" -eq 1 ]; then
+    elif [ "$USE_ACQUISITION" -eq 1 ]; then
         # Start OpenBCI driver node
         echo "Starting OpenBCI driver node (port: $OPENBCI_PORT, channels: $OPENBCI_CHANNELS)..."
         LOG_FILE="$LOG_DIR/openbci_driver.log"
@@ -316,7 +315,7 @@ if [ "$RUN_NODE" -eq 1 ]; then
         NODE_PID=$!
         echo "openbci_driver started with PID $NODE_PID. Logs: $LOG_FILE"
         echo "$NODE_PID" > "$LOG_DIR/openbci_driver.pid"
-    else
+    elif [ "$USE_ACQUISITION" -eq 2 ]; then
         # Start neurosity_driver node
         echo "Starting neurosity_driver node in the background..."
         LOG_FILE="$LOG_DIR/neurosity_driver.log"
@@ -334,13 +333,16 @@ if [ "$RUN_NODE" -eq 1 ]; then
         NODE_PID=$!
         echo "neurosity_driver started with PID $NODE_PID. Logs: $LOG_FILE"
         echo "$NODE_PID" > "$LOG_DIR/neurosity_driver.pid"
+    else
+        echo "ERROR: Invalid USE_ACQUISITION value: $USE_ACQUISITION (must be 0, 1, or 2)"
+        exit 1
     fi
     
 
     # Start two EEGSaver nodes: one for raw, one for preprocessed
     echo "Starting EEG JSON saver node for raw data..."
     RAW_SAVER_LOG_FILE="$LOG_DIR/eeg_json_saver_raw.log"
-    RAW_SAVER_SCRIPT="$PROJECT_ROOT/nodes/eeg_json_saver.py"
+    RAW_SAVER_SCRIPT="$PROJECT_ROOT/nodes/saver/eeg_json_saver.py"
     EEG_DATA_DIR="$PROJECT_ROOT/eeg_data"
     nohup "$VENV_PATH/bin/python3" "$RAW_SAVER_SCRIPT" --ros-args -p topic:=/eeg/raw -p file_path:="$EEG_DATA_DIR/eeg_raw_data.jsonl" >> "$RAW_SAVER_LOG_FILE" 2>&1 &
     RAW_SAVER_PID=$!
@@ -349,7 +351,7 @@ if [ "$RUN_NODE" -eq 1 ]; then
 
     echo "Starting EEG JSON saver node for preprocessed data..."
     PREPROC_SAVER_LOG_FILE="$LOG_DIR/eeg_json_saver_preprocessed.log"
-    PREPROC_SAVER_SCRIPT="$PROJECT_ROOT/nodes/eeg_json_saver.py"
+    PREPROC_SAVER_SCRIPT="$PROJECT_ROOT/nodes/saver/eeg_json_saver.py"
     nohup "$VENV_PATH/bin/python3" "$PREPROC_SAVER_SCRIPT" --ros-args -p topic:=/eeg/processed -p file_path:="$EEG_DATA_DIR/eeg_preprocessed_data.jsonl" >> "$PREPROC_SAVER_LOG_FILE" 2>&1 &
     PREPROC_SAVER_PID=$!
     echo "eeg_json_saver (preprocessed) started with PID $PREPROC_SAVER_PID. Logs: $PREPROC_SAVER_LOG_FILE"
@@ -392,7 +394,6 @@ if [ "$RUN_RQT" -eq 1 ]; then
     docker build -t ros2-rqt "$WORKSPACE" || { echo "Docker build failed"; exit 1; }
     xhost +local:root
     docker run -it --rm \
-    SIMULATE="${SIMULATE:-1}"  # Default: use EEG simulator. Set SIMULATE=0 for real device.
         -v /tmp/.X11-unix:/tmp/.X11-unix \
         -v "$WORKSPACE":/home/devuser/ros2_ws \
         ros2-rqt bash -c "source /opt/ros/humble/setup.bash && cd /home/devuser/ros2_ws && colcon build && source install/setup.bash && rqt"
@@ -406,13 +407,18 @@ echo "============================================"
 echo ""
 
 if [ "$RUN_NODE" -eq 1 ]; then
-    if [ "$SIMULATE" -eq 1 ]; then
+    if [ "$USE_ACQUISITION" -eq 0 ]; then
         echo "Running in SIMULATOR MODE (test data, no real device needed)"
         echo ""
         echo "Nodes started:"
         echo "  - eeg_simulator (PID: $(cat $LOG_DIR/eeg_simulator.pid 2>/dev/null || echo '?'))"
-    else
-        echo "Running with REAL NEUROSITY DEVICE"
+    elif [ "$USE_ACQUISITION" -eq 1 ]; then
+        echo "Running with OPENBCI DEVICE"
+        echo ""
+        echo "Nodes started:"
+        echo "  - openbci_driver (PID: $(cat $LOG_DIR/openbci_driver.pid 2>/dev/null || echo '?'))"
+    elif [ "$USE_ACQUISITION" -eq 2 ]; then
+        echo "Running with NEUROSITY DEVICE"
         echo ""
         echo "Nodes started:"
         echo "  - neurosity_driver (PID: $(cat $LOG_DIR/neurosity_driver.pid 2>/dev/null || echo '?'))"
@@ -433,18 +439,12 @@ if [ "$RUN_NODE" -eq 1 ]; then
     echo "  head -1 $LOG_DIR/eeg_data.jsonl | python3 -m json.tool"
     echo ""
     echo "Stop all nodes:"
-    if [ "$SIMULATE" -eq 1 ]; then
-        if [ "${USE_ROSBAG:-0}" = "1" ]; then
-            echo "  kill \$(cat $LOG_DIR/eeg_simulator.pid) \$(cat $LOG_DIR/eeg_rosbag_saver.pid)"
-        else
-            echo "  kill \$(cat $LOG_DIR/eeg_simulator.pid) \$(cat $LOG_DIR/eeg_json_saver.pid)"
-        fi
-    else
-        if [ "${USE_ROSBAG:-0}" = "1" ]; then
-            echo "  kill \$(cat $LOG_DIR/neurosity_driver.pid) \$(cat $LOG_DIR/eeg_rosbag_saver.pid)"
-        else
-            echo "  kill \$(cat $LOG_DIR/neurosity_driver.pid) \$(cat $LOG_DIR/eeg_json_saver.pid)"
-        fi
+    if [ "$USE_ACQUISITION" -eq 0 ]; then
+        echo "  kill \\$(cat $LOG_DIR/eeg_simulator.pid) \\$(cat $LOG_DIR/eeg_json_saver_raw.pid) \\$(cat $LOG_DIR/eeg_preprocessor.pid) \\$(cat $LOG_DIR/eeg_json_saver_preprocessed.pid)"
+    elif [ "$USE_ACQUISITION" -eq 1 ]; then
+        echo "  kill \\$(cat $LOG_DIR/openbci_driver.pid) \\$(cat $LOG_DIR/eeg_json_saver_raw.pid) \\$(cat $LOG_DIR/eeg_preprocessor.pid) \\$(cat $LOG_DIR/eeg_json_saver_preprocessed.pid)"
+    elif [ "$USE_ACQUISITION" -eq 2 ]; then
+        echo "  kill \\$(cat $LOG_DIR/neurosity_driver.pid) \\$(cat $LOG_DIR/eeg_json_saver_raw.pid) \\$(cat $LOG_DIR/eeg_preprocessor.pid) \\$(cat $LOG_DIR/eeg_json_saver_preprocessed.pid)"
     fi
 else
     LOG_DIR="$PROJECT_ROOT/logs"
