@@ -4,7 +4,7 @@ This directory contains ROS2 driver nodes for various EEG hardware devices.
 
 ## Available Drivers
 
-### 1. Neurosity Driver (`neurosity_driver.py`)
+### 1. Neurosity Driver (`neurosity_acquisition.py`)
 Connects to Neurosity Crown headset via WiFi.
 
 **Requirements:**
@@ -13,7 +13,7 @@ Connects to Neurosity Crown headset via WiFi.
 
 **Usage:**
 ```bash
-python3 neurosity_driver.py
+python3 neurosity_acquisition.py
 ```
 
 **Configuration:**
@@ -24,7 +24,7 @@ NEUROSITY_EMAIL=your-email@example.com
 NEUROSITY_PASSWORD=your-password
 ```
 
-### 2. OpenBCI Driver (`openbci_driver.py`)
+### 2. OpenBCI Driver (`openbci_acquisition.py`)
 Connects to OpenBCI Cyton board via USB serial.
 
 **Requirements:**

@@ -276,8 +276,8 @@ class EEGIntegrationTest:
         acq_dir = self.workspace / 'nodes' / 'data_acquisition'
         required_files = [
             'eeg_simulator.py',
-            'neurosity_driver.py',
-            'openbci_driver.py',
+            'neurosity_acquisition.py',
+            'openbci_acquisition.py',
             'README.md'
         ]
         return all((acq_dir / f).exists() for f in required_files)

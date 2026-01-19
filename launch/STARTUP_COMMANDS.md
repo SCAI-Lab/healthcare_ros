@@ -180,7 +180,7 @@ Generates side-by-side comparison of raw vs preprocessed data:
 ```bash
 VISUALIZATION_MODE=comparison ./launch/start.sh
 # Or run directly:
-python3 plots/plot_eeg_comparison.py
+python3 nodes/visualization/plot_eeg_comparison.py
 ```
 
 ### Live rqt Plugin

@@ -282,7 +282,7 @@ class UnitTests:
         """Test that Neurosity driver node structure is valid."""
         from pathlib import Path
         workspace = Path(__file__).parent.parent.resolve()
-        driver_path = workspace / 'nodes' / 'data_acquisition' / 'neurosity_driver.py'
+        driver_path = workspace / 'nodes' / 'data_acquisition' / 'neurosity_acquisition.py'
         
         # Check file exists and has required imports
         if not driver_path.exists():
@@ -299,7 +299,7 @@ class UnitTests:
         """Test that OpenBCI driver node structure is valid."""
         from pathlib import Path
         workspace = Path(__file__).parent.parent.resolve()
-        driver_path = workspace / 'nodes' / 'data_acquisition' / 'openbci_driver.py'
+        driver_path = workspace / 'nodes' / 'data_acquisition' / 'openbci_acquisition.py'
         
         # Check file exists and has required imports
         if not driver_path.exists():

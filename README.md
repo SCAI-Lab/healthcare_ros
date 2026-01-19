@@ -165,7 +165,7 @@ Then run the pipeline as usual.
 
 Visualization tools are now located in the `visualization/` folder:
 - Offline plotting: `visualization/plot_eeg_offline.py` (default)
-- rqt plugin: `visualization/eeg_visualization_rqt/` (set `VISUALIZATION_MODE=rqt`)
+- rqt plugin: `nodes/visualization/eeg_visualization_rqt/` (set `VISUALIZATION_MODE=rqt`)
 
 See `visualization/README.md` for details.
 

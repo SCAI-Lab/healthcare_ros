@@ -50,7 +50,7 @@ if [ "${1:-}" = "rqt" ]; then
         # Get script directory and navigate to project root
         SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
         PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-        python3 "$PROJECT_ROOT/plots/plot_eeg_comparison.py" &
+        python3 "$PROJECT_ROOT/nodes/visualization/plot_eeg_comparison.py" &
     fi
     # Unset all known Snap and VSCode variables
     unset LD_LIBRARY_PATH
@@ -360,7 +360,7 @@ if [ "$RUN_NODE" -eq 1 ]; then
     # Start EEG Preprocessor node (optional)
     echo "Starting eeg_preprocessor node in the background..."
     PREPROC_LOG_FILE="$LOG_DIR/eeg_preprocessor.log"
-    PREPROC_SCRIPT="$PROJECT_ROOT/nodes/eeg_preprocessing/preprocessing.py"
+    PREPROC_SCRIPT="$PROJECT_ROOT/nodes/preprocessing/eeg_preprocessing.py"
     if [ -f "$PREPROC_SCRIPT" ]; then
         nohup "$VENV_PATH/bin/python3" "$PREPROC_SCRIPT" >> "$PREPROC_LOG_FILE" 2>&1 &
         PREPROC_PID=$!
@@ -378,10 +378,10 @@ VISUALIZATION_MODE="${VISUALIZATION_MODE:-none}"
 
 if [ "$VISUALIZATION_MODE" = "comparison" ]; then
     echo "Starting offline EEG comparison plotting script..."
-    python3 plots/plot_eeg_comparison.py &
+    python3 nodes/visualization/plot_eeg_comparison.py &
 elif [ "$VISUALIZATION_MODE" = "rqt" ]; then
     echo "Starting rqt EEG visualization plugin..."
-    export RQT_PLUGIN_PATH="$PROJECT_ROOT/visualization/eeg_visualization_rqt"
+    export RQT_PLUGIN_PATH="$PROJECT_ROOT/nodes/visualization/eeg_visualization_rqt"
     rqt --standalone eeg_visualization_rqt &
 else
     echo "Visualization disabled."
