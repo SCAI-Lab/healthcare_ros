@@ -33,11 +33,11 @@ Connects to OpenBCI Cyton board via USB serial.
 
 **Usage:**
 ```bash
-# 8 channels (default)
-python3 openbci_driver.py --port /dev/ttyUSB0 --channels 8
+# 8 channels (Cyton only)
+python3 openbci_acquisition.py --port /dev/ttyUSB0 --channels 8
 
-# 16 channels (with daisy board)
-python3 openbci_driver.py --port /dev/ttyUSB0 --channels 16
+# 16 channels (Cyton + Daisy)
+python3 openbci_acquisition.py --port /dev/ttyUSB0 --channels 16
 ```
 
 **Command line arguments:**

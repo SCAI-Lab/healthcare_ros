@@ -37,7 +37,6 @@ rqt --standalone eeg_visualization_rqt
 eeg_visualization_rqt/
 ├── package.xml          # ROS2 package manifest
 ├── setup.py             # Python package setup
-├── CMakeLists.txt       # Build configuration
 ├── resource/            # Plugin registration XML
 └── eeg_visualization_rqt/
     ├── __init__.py

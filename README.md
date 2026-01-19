@@ -1,171 +1,318 @@
-**Project Overview**
-- **Name:** Neurosity ROS2 demo with `healthcare_msgs` proof-of-concept
-- **Purpose:** Demonstrates publishing EEG data (using `healthcare_msgs/msg/biosensing/raw_biosignals/EEG.msg`) from a Neurosity device or a simulator and storing it in JSONL format for downstream processing.
+# Healthcare Messages Demonstration - EEG Pipeline
 
-**Supported OS**: Linux (instructions are written and tested for a Linux desktop/server environment).
+**ROS2-based EEG data acquisition, preprocessing, and storage pipeline using `healthcare_msgs`**
 
-**High-level components**
-- `neurosity_driver`: ROS2 Python node that connects to Neurosity SDK and publishes `/neurosity/eeg` and `/neurosity/eeg_info`.
-- `eeg_saver.py`: Subscriber node that saves `healthcare_msgs/EEG` messages to `eeg_data/eeg_data.jsonl` (JSONL: one JSON object per line).
-- `eeg_simulator.py`: Optional simulator that publishes synthetic EEG data in the same `healthcare_msgs` format for testing without hardware.
-- `launch/start.sh`: Orchestration script that prepares the environment, builds packages (if needed), and starts the driver/simulator + saver.
-- `test_eeg_integration.py`: Automated integration test that validates the entire EEG pipeline (data format, channel count, sample consistency, quality scores).
-- `visualize_eeg.py`: Visualization and analysis tool that generates time-domain and frequency-spectrum plots from stored EEG data.
+## Overview
 
-**Quick start (tested workflow)**
-1. Open a terminal on Linux.
-2. Clone this repo into your ROS2 workspace `src/` (if not present):
+This project demonstrates a complete EEG data processing pipeline using ROS2 and the `healthcare_msgs` package. It supports multiple EEG hardware devices, real-time preprocessing, flexible data storage, and visualization tools.
 
-```bash
-# from your workspace root (example: ~/ros2_ws)
-cd ~/ros2_ws/src
-# git clone <this-repo>  (if not already present)
-```
+**Supported OS:** Linux (tested on Ubuntu with ROS2 Jazzy)
 
-3. Run the setup/start script (creates/uses venv, sources ROS2, builds if required):
+## Quick Start
 
 ```bash
 cd ~/ros2_ws/src/-healthcare_msgs_demonstration
-# Run with real device (requires .env credentials and device online)
-launch/start.sh
 
-# Or run in SIMULATOR mode (no device needed):
-SIMULATE=1 launch/start.sh
+# Start with simulator (no hardware needed)
+USE_ACQUISITION=0 ./launch/start.sh
+
+# Or with real hardware
+USE_ACQUISITION=1 ./launch/start.sh  # OpenBCI
+USE_ACQUISITION=2 ./launch/start.sh  # Neurosity
 ```
 
-4. Monitor logs and data:
+For detailed usage and configuration options, see [`launch/STARTUP_COMMANDS.md`](launch/STARTUP_COMMANDS.md).
+
+## Architecture
+
+### Pipeline Overview
+
+```
+┌─────────────────┐      ┌──────────────┐      ┌─────────────┐
+│  Data Source    │─────▶│ Preprocessor │─────▶│   Savers    │
+│  (Acquisition)  │      │  (Optional)  │      │ (JSON/MCAP) │
+└─────────────────┘      └──────────────┘      └─────────────┘
+       │                        │                      │
+       ▼                        ▼                      ▼
+  /eeg/raw              /eeg/processed         eeg_data/*.jsonl
+  /eeg/raw_info         /eeg/processed_info    rosbag_data/*.mcap
+```
+
+### Components
+
+**1. Data Acquisition** (`nodes/data_acquisition/`)
+- **Simulator** - Synthetic EEG data for testing
+- **Neurosity** - Neurosity Crown headset (WiFi)
+- **OpenBCI** - OpenBCI Cyton board (USB serial)
+
+**2. Preprocessing** (`nodes/preprocessing/`)
+- **EEG Preprocessor** - Bandpass filtering (0.5-45 Hz) and Common Average Reference (CAR)
+
+**3. Data Savers** (`nodes/saver/`)
+- **JSON Saver** - Stores data in JSONL format with metadata
+- **Rosbag Saver** - Records to MCAP format for ROS2 playback
+
+**4. Visualization** (`nodes/visualization/`)
+- **RQT Plugin** - Real-time plotting GUI
+- **Offline Plotter** - Static comparison plots
+
+### Standardized Topics
+
+| Topic | Message Type | QoS | Description |
+|-------|-------------|-----|-------------|
+| `/eeg/raw` | `healthcare_msgs/EEG` | Default | Raw EEG data from acquisition |
+| `/eeg/raw_info` | `healthcare_msgs/EEGInfo` | Latching | Raw data metadata |
+| `/eeg/processed` | `healthcare_msgs/EEG` | Default | Preprocessed EEG data |
+| `/eeg/processed_info` | `healthcare_msgs/EEGInfo` | Latching | Preprocessing metadata |
+
+**Latching QoS** ensures late subscribers receive metadata.
+
+## Installation
+
+### Prerequisites
+
+- ROS2 (Jazzy or compatible)
+- Python 3.10+
+- Linux (Ubuntu 22.04+ recommended)
+
+### Setup
 
 ```bash
-# View node logs
-tail -f logs/neurosity_driver.log    # driver (real device)
-tail -f logs/eeg_simulator.log      # simulator (if SIMULATE=1)
-tail -f logs/eeg_saver.log          # saver (always)
-
-# View stored EEG samples (JSONL)
-head -3 eeg_data/eeg_data.jsonl | python3 -m json.tool
+cd ~/ros2_ws/src
+git clone <repository-url> -healthcare_msgs_demonstration
+cd -healthcare_msgs_demonstration
+./launch/start.sh
 ```
 
-**Configuration Files**
+The script automatically:
+- Creates virtual environment (`~/hcmd-venv`)
+- Installs dependencies
+- Sources ROS2
+- Builds packages
+- Starts pipeline
 
-Several configuration files are required for full functionality but are not tracked in git for security/privacy reasons:
+### Configuration
 
-1. **Neurosity Credentials** (required for real device, not for simulator):
-   - Location: `ros2_hc_drv/neurosity_driver/.env`
-   - Setup: Copy the example file and fill in your credentials:
-     ```bash
-     cd ros2_hc_drv/neurosity_driver/
-     cp .env.example .env
-     # Edit .env with your actual device ID, email, and password
-     ```
-   - Required keys:
-     ```
-     NEUROSITY_DEVICE_ID=your_device_id_here
-     NEUROSITY_EMAIL=your_email@example.com
-     NEUROSITY_PASSWORD=your_password_here
-     ```
+**Neurosity Device:**
+```bash
+cp ros2_hc_drv/neurosity_driver/.env.example ros2_hc_drv/neurosity_driver/.env
+# Edit with your credentials
+```
 
-2. **ROS2 Node Parameters** (optional, for advanced configuration):
-   - Location: `config/params.yaml`
-   - Purpose: Device-specific parameters for Neurosity, OpenBCI, or EEG simulator nodes
-   - This file is currently a placeholder; add custom parameters as needed for your setup
+**OpenBCI Device:**
+```bash
+USE_ACQUISITION=1 OPENBCI_PORT=/dev/ttyUSB0 OPENBCI_CHANNELS=8 ./launch/start.sh
+```
 
-**Important:** The `.env` file and `config/*.yaml` files contain sensitive credentials and local configurations. They are excluded from version control (see `.gitignore`). Always create them from the provided `.example` templates.
+## Usage
 
-**Environment details and assumptions**
-- Python venv default path: `~/neurosity-venv` (configurable via `VENV_PATH` env var)
-- ROS2 distro default: `jazzy` (configurable via `ROS_DISTRO` env var)
-- Workspace default: `~/ros2_ws` (configurable via `WORKSPACE` env var)
+### Environment Variables
 
-**Installation / Build (manual steps)**
-1. Ensure ROS2 for your distro is installed and `source /opt/ros/$ROS_DISTRO/setup.bash` works.
-2. Create and activate venv (if you prefer manual control):
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `USE_ACQUISITION` | `0` | Data source: 0=simulator, 1=OpenBCI, 2=Neurosity |
+| `OPENBCI_PORT` | `/dev/ttyUSB0` | Serial port for OpenBCI |
+| `OPENBCI_CHANNELS` | `8` | OpenBCI channels (8 or 16) |
+| `RUN_TESTS` | `0` | Set to 1 to run tests |
+| `VENV_PATH` | `~/hcmd-venv` | Virtual environment path |
+| `VISUALIZATION_MODE` | `none` | `comparison` or `rqt` |
+
+### Common Commands
 
 ```bash
-python3 -m venv ~/neurosity-venv
-source ~/neurosity-venv/bin/activate
-python -m pip install --upgrade pip
-pip install empy catkin-pkg lark-parser pyyaml neurosity python-dotenv matplotlib numpy
+# Start with different data sources
+USE_ACQUISITION=0 ./launch/start.sh  # Simulator
+USE_ACQUISITION=1 ./launch/start.sh  # OpenBCI
+USE_ACQUISITION=2 ./launch/start.sh  # Neurosity
+
+# Run tests
+RUN_TESTS=1 RUN_NODE=0 ./launch/start.sh
+
+# With visualization
+VISUALIZATION_MODE=rqt ./launch/start.sh
+VISUALIZATION_MODE=comparison ./launch/start.sh
+
+# Monitor logs
+tail -f logs/eeg_simulator.log
+tail -f logs/eeg_json_saver_raw.log
+tail -f logs/eeg_preprocessor.log
+
+# View data
+head -3 eeg_data/eeg_raw_data.jsonl | python3 -m json.tool
+cat eeg_data/eeg_raw_data.info.json
+
+# Stop all nodes
+kill $(cat logs/*.pid)
 ```
 
-3. From workspace root, install system deps and build:
+## Data Format
 
-```bash
-# run once (may require sudo for rosdep)
-rosdep update && rosdep install --from-paths src --ignore-src -r -y
-
-# build packages (the script may already do this)
-colcon build --packages-select healthcare_msgs neurosity_driver --symlink-install
-source install/setup.bash
-```
-
-**Simulator usage (recommended for testing)**
-- Start the simulator with `SIMULATE=1 launch/start.sh` — it will publish EEG messages to `/neurosity/eeg` in the same `healthcare_msgs` format and `eeg_saver` will record them to `eeg_data/eeg_data.jsonl`.
-
-**Testing & Validation**
-- **Automated integration test:** Run the full pipeline test (simulator + saver) and validate data format, structure, and completeness:
-  ```bash
-  python3 test_eeg_integration.py 15  # Run for 15 seconds, validate all checks
-  ```
-  This test verifies:
-  - Data file exists and contains valid JSONL
-  - EEG message format correct (header, session_id, eeg array, quality)
-  - Channel count is 4 across all messages
-  - Sample counts match array dimensions
-  - Quality scores are in valid range [0, 1]
-
-- **Data visualization:** Generate time-domain and frequency-spectrum plots from stored EEG data:
-  ```bash
-  python3 visualize_eeg.py eeg_data/eeg_data.jsonl
-  ```
-  Outputs:
-  - `eeg_time_domain.png` — 4 subplots (one per channel) with signal waveforms
-  - `eeg_frequency_spectrum.png` — FFT plots with frequency band markers (Theta/Alpha/Beta)
-  - Console statistics: mean, std, min, max per channel (in µV)
-
-## Data Saving Modes
-
-By default, EEG data is saved in JSON format. To use the rosbag/MCAP saver instead, set the environment variable:
-
-```bash
-export USE_ROSBAG=1
-```
-
-Then run the pipeline as usual.
-
-**Data format**
-- Saved file: `eeg_data/eeg_data.jsonl`
-- Each line is a JSON object matching the `healthcare_msgs/EEG` message structure, for example:
+### JSONL Files
 
 ```json
 {
-  "header": {"stamp": {"sec": 123, "nsec": 456}, "frame_id": "neurosity"},
-  "session_id": "session_...",
+  "header": {
+    "stamp": {"sec": 1234567890, "nanosec": 123456789},
+    "frame_id": "eeg_sensor"
+  },
+  "session_id": "session_uuid",
   "sample_size": 64,
-  "eeg": [ ... flattened array length = channel_count * sample_size ...],
-  "quality": [ ... per-channel quality scores ...]
+  "eeg": [/* flattened array: channels * samples */],
+  "quality": [0.95, 0.92, 0.88, 0.90]
 }
 ```
 
-**Troubleshooting**
-- If editor (VS Code) shows import warnings for `healthcare_msgs`, source the workspace overlay or select the venv Python interpreter in VS Code. The runtime import works if `source ~/ros2_ws/install/setup.bash` and the venv are active.
-- If no EEG samples arrive while the driver is running: check device power/network and credentials; use `SIMULATE=1` to validate pipeline without the device.
-- If builds fail due to missing Python packages, ensure `empy`, `catkin-pkg`, `lark-parser`, and `pyyaml` are installed in the venv.
-- If visualization script fails with `ModuleNotFoundError: No module named 'matplotlib'`, install it: `pip install matplotlib numpy`
+### Metadata (.info.json)
 
-**Files added by this demo**
-- `launch/start.sh` — setup + start orchestration
-- `eeg_saver.py` — subscriber & data recorder
-- `eeg_simulator.py` — test data publisher
+```json
+{
+  "channel_size": 4,
+  "sampling_rate": 256.0,
+  "channel_location": ["Fp1", "Fp2", "F3", "F4"],
+  "unit": "microvolts",
+  "device_info": {
+    "session_id": "session_uuid",
+    "device_id": "device_name"
+  },
+  "selected_preprocessing": [4]
+}
+```
 
-**Next steps / Suggestions**
-- Add a small metadata index file (e.g., `eeg_metadata.json`) alongside `eeg_data.jsonl` to record `EEGInfo` fields published by the driver so consumers can map flattened arrays to channel names.
-- Consider rotating logs and data files after they reach a size threshold.
+## Testing
 
-## Visualization Options
+### Run All Tests
+```bash
+RUN_TESTS=1 RUN_NODE=0 ./launch/start.sh
+```
 
-Visualization tools are now located in the `visualization/` folder:
-- Offline plotting: `visualization/plot_eeg_offline.py` (default)
-- rqt plugin: `nodes/visualization/eeg_visualization_rqt/` (set `VISUALIZATION_MODE=rqt`)
+### Test Suites
 
-See `visualization/README.md` for details.
+**Unit Tests** (15 tests):
+- Signal generation
+- JSONL format
+- Data validation
+- EEGInfo structure
+- Node imports
+
+**Integration Tests** (11 tests):
+- End-to-end pipeline
+- Data format/structure
+- Channel/sample consistency
+- Quality validation
+- Metadata verification
+
+## Data Acquisition
+
+### Simulator
+Generates synthetic 4-channel EEG with realistic brain signals (alpha, beta, theta waves).
+
+### Neurosity Crown
+WiFi connection via Neurosity SDK. Requires `.env` credentials.
+
+### OpenBCI Cyton
+USB serial connection. Supports 8 or 16 channels (with Daisy board).
+
+**Details:** See [`nodes/data_acquisition/README.md`](nodes/data_acquisition/README.md)
+
+## Visualization
+
+### Real-time (rqt)
+```bash
+VISUALIZATION_MODE=rqt ./launch/start.sh
+```
+
+### Offline Plotting
+```bash
+VISUALIZATION_MODE=comparison ./launch/start.sh
+```
+
+**Details:** See [`nodes/visualization/README.md`](nodes/visualization/README.md)
+
+## Troubleshooting
+
+### Import Errors
+```bash
+source ~/hcmd-venv/bin/activate
+source /opt/ros/jazzy/setup.bash
+source ~/ros2_ws/install/setup.bash
+```
+
+### No Data Saved
+```bash
+# Check running nodes
+ps aux | grep -E "eeg_simulator|eeg_json_saver|eeg_preprocessing"
+
+# Check logs for errors
+grep -i error logs/*.log
+```
+
+### Build Failures
+```bash
+REBUILD=1 ./launch/start.sh
+```
+
+### Device Issues
+
+**Neurosity:**
+- Verify device powered and on WiFi
+- Check `.env` credentials
+- Test with simulator first
+
+**OpenBCI:**
+- Check USB: `ls -l /dev/ttyUSB*`
+- Add to dialout group: `sudo usermod -a -G dialout $USER`
+- Logout/login required
+
+## Development
+
+### Adding Data Sources
+
+1. Create `nodes/data_acquisition/new_device.py`
+2. Publish to `/eeg/raw` and `/eeg/raw_info` (latching QoS)
+3. Update `launch/start.sh`
+4. Add tests
+5. Document
+
+### Directory Structure
+
+```
+├── config/                 # Configuration files
+├── eeg_data/              # Stored JSONL data
+├── launch/                # Launch scripts
+│   ├── start.sh
+│   └── STARTUP_COMMANDS.md
+├── logs/                  # Process logs
+├── nodes/
+│   ├── data_acquisition/  # Hardware drivers
+│   ├── preprocessing/     # Signal processing
+│   ├── saver/            # Data persistence
+│   └── visualization/    # Plotting tools
+├── tests/                # Test suites
+└── README.md
+```
+
+## Dependencies
+
+### Python Packages
+- numpy, scipy, matplotlib
+- mne (EEG analysis)
+- neurosity (Neurosity SDK)
+- openbci-python (OpenBCI SDK)
+- python-dotenv, pyyaml
+
+### ROS2 Packages
+- rclpy
+- healthcare_msgs
+- rqt_gui
+
+## License
+
+Apache-2.0
+
+## References
+
+- [ROS2 Documentation](https://docs.ros.org/)
+- [healthcare_msgs](https://github.com/ros-medical/healthcare_msgs)
+- [Neurosity SDK](https://docs.neurosity.co/)
+- [OpenBCI Docs](https://docs.openbci.com/)
 

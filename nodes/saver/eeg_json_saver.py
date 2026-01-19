@@ -55,6 +55,10 @@ class EEGSaver(Node):
         self.data_file = Path(file_path)
         self.data_file.parent.mkdir(parents=True, exist_ok=True)
         
+        # Clear/create the data file on startup (overwrite mode)
+        with open(self.data_file, 'w') as f:
+            pass  # Creates empty file or truncates existing file
+        
         # Create metadata file path (same name with _info.json suffix)
         self.info_file = self.data_file.with_suffix('').with_suffix('.info.json')
         self.info_stored = False
