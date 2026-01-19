@@ -14,6 +14,7 @@ Simulates 4 channels of EEG data with realistic brain signal characteristics:
 import math
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, DurabilityPolicy
 from healthcare_msgs.msg import EEG, EEGInfo
 
 
@@ -21,9 +22,12 @@ class EEGSimulator(Node):
     def __init__(self):
         super().__init__('eeg_simulator')
         
+        # Create QoS profile with transient local durability for EEGInfo (latching)
+        info_qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        
         # Publishers
         self.eeg_pub = self.create_publisher(EEG, '/eeg/raw', 10)
-        self.eeg_info_pub = self.create_publisher(EEGInfo, '/neurosity/eeg_info', 1)
+        self.eeg_info_pub = self.create_publisher(EEGInfo, '/eeg/raw_info', qos_profile=info_qos)
         
         # Simulation parameters
         self.sampling_rate = 256  # Hz

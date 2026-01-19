@@ -13,8 +13,17 @@ from rclpy.node import Node
 class RosbagSaverNode(Node):
     def __init__(self):
         super().__init__('eeg_rosbag_saver')
-        self.output_dir = os.path.expanduser('~/neurosity_rosbag')
-        self.topics = ['/neurosity/eeg', '/neurosity/eeg_processed']
+        # Use relative path from package location
+        from pathlib import Path
+        pkg_dir = Path(__file__).parent.parent.resolve()
+        self.output_dir = str(pkg_dir / 'rosbag_data')
+        # Record both EEG data and EEGInfo metadata topics
+        self.topics = [
+            '/eeg/raw',
+            '/eeg/raw_info',
+            '/eeg/processed',
+            '/eeg/processed_info'
+        ]
         self.rosbag_proc = None
         self.start_rosbag()
         self.get_logger().info(f"Started rosbag recording to {self.output_dir} (MCAP format)")

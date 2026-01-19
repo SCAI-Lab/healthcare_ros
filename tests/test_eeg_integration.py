@@ -14,6 +14,7 @@ import subprocess
 import time
 import json
 import sys
+import os
 from pathlib import Path
 from datetime import datetime
 
@@ -22,9 +23,10 @@ class EEGIntegrationTest:
     def __init__(self, duration_secs=20, verbose=True):
         self.duration = duration_secs
         self.verbose = verbose
-        self.workspace = Path.home() / 'ros2_ws' / 'src' / '-healthcare_msgs_demonstration'
-        self.log_dir = Path.home() / 'neurosity_logs'
-        self.data_file = self.log_dir / 'eeg_data.jsonl'
+        # Use relative path from test file location
+        self.workspace = Path(__file__).parent.parent.resolve()
+        self.log_dir = self.workspace / 'eeg_data'
+        self.data_file = self.log_dir / 'eeg_raw_data.jsonl'
         self.results = {'passed': [], 'failed': []}
         
     def log(self, msg):
@@ -72,7 +74,7 @@ class EEGIntegrationTest:
         """Remove old logs and data."""
         try:
             # Kill only neurosity processes by name, not all python3
-            subprocess.run(['bash', '-c', 'pkill -f "neurosity_driver|eeg_saver|eeg_simulator"'], 
+            subprocess.run(['bash', '-c', 'pkill -f "neurosity_driver|eeg_json_saver|eeg_simulator|eeg_preprocessor"'], 
                          stderr=subprocess.DEVNULL)
             time.sleep(0.5)
             for f in self.log_dir.glob('eeg*.*'):
@@ -82,32 +84,64 @@ class EEGIntegrationTest:
             self.log(f"  Cleanup warning: {e}")
     
     def _start_nodes(self):
-        """Start simulator + saver."""
+        """Start simulator + saver directly (not via start.sh)."""
         try:
-            cmd = f"cd {self.workspace} && SIMULATE=1 NO_BUILD=1 RUN_NODE=1 nohup bash ./start.sh > /tmp/test_start.log 2>&1 &"
-            subprocess.run(cmd, shell=True)
+            # Get venv path
+            venv_path = os.environ.get('VIRTUAL_ENV', str(Path.home() / 'hcmd-venv'))
+            python_exe = str(Path(venv_path) / 'bin' / 'python3')
+            
+            # Ensure log directory exists
+            self.log_dir.mkdir(exist_ok=True)
+            
+            # Start simulator
+            sim_script = self.workspace / 'nodes' / 'eeg_simulator.py'
+            sim_log = self.log_dir / 'eeg_simulator.log'
+            with open(sim_log, 'w') as log_file:
+                sim_proc = subprocess.Popen(
+                    [python_exe, str(sim_script)],
+                    stdout=log_file,
+                    stderr=subprocess.STDOUT,
+                    cwd=str(self.workspace)
+                )
+            
+            # Start raw data saver
+            saver_script = self.workspace / 'nodes' / 'eeg_json_saver.py'
+            saver_log = self.log_dir / 'eeg_json_saver_raw.log'
+            with open(saver_log, 'w') as log_file:
+                saver_proc = subprocess.Popen(
+                    [python_exe, str(saver_script), '--ros-args',
+                     '-p', 'topic:=/eeg/raw',
+                     '-p', f'file_path:={self.data_file}'],
+                    stdout=log_file,
+                    stderr=subprocess.STDOUT,
+                    cwd=str(self.workspace)
+                )
+            
+            # Save PIDs
+            with open(self.log_dir / 'eeg_simulator.pid', 'w') as f:
+                f.write(str(sim_proc.pid))
+            with open(self.log_dir / 'eeg_json_saver_raw.pid', 'w') as f:
+                f.write(str(saver_proc.pid))
+            
             time.sleep(3)
             
-            # Check if PIDs exist
-            try:
-                with open(self.log_dir / 'eeg_simulator.pid', 'r') as f:
-                    sim_pid = int(f.read().strip())
-                with open(self.log_dir / 'eeg_saver.pid', 'r') as f:
-                    saver_pid = int(f.read().strip())
-                
-                self.log(f"  ✓ Simulator (PID {sim_pid}) + Saver (PID {saver_pid}) started")
+            # Verify processes are still running
+            if sim_proc.poll() is None and saver_proc.poll() is None:
+                self.log(f"  ✓ Simulator (PID {sim_proc.pid}) + Saver (PID {saver_proc.pid}) started")
                 return True
-            except:
-                self.log(f"  ✗ Could not verify PIDs")
+            else:
+                self.log(f"  ✗ One or more processes died")
                 return False
         except Exception as e:
             self.log(f"  ✗ Error starting nodes: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def _stop_nodes(self):
         """Stop running nodes."""
         try:
-            subprocess.run(['bash', '-c', 'pkill -f "neurosity_driver|eeg_saver|eeg_simulator"'],
+            subprocess.run(['bash', '-c', 'pkill -f "neurosity_driver|eeg_json_saver|eeg_simulator|eeg_preprocessor"'],
                          stderr=subprocess.DEVNULL)
             self.log("  ✓ Nodes stopped")
         except Exception as e:
@@ -122,6 +156,8 @@ class EEGIntegrationTest:
             ('Channel count correct', self._test_channel_count),
             ('Sample count consistent', self._test_sample_consistency),
             ('Quality scores valid', self._test_quality_valid),
+            ('EEGInfo metadata file exists', self._test_info_file_exists),
+            ('EEGInfo metadata valid', self._test_info_metadata_valid),
         ]
         
         for test_name, test_func in tests:
@@ -190,6 +226,35 @@ class EEGIntegrationTest:
                 for q in msg['quality']:
                     if not (0.0 <= q <= 1.0):
                         return False
+        return True
+    
+    def _test_info_file_exists(self):
+        """Check if EEGInfo metadata file exists."""
+        info_file = self.log_dir / 'eeg_raw_data.info.json'
+        return info_file.exists()
+    
+    def _test_info_metadata_valid(self):
+        """Validate EEGInfo metadata structure."""
+        info_file = self.log_dir / 'eeg_raw_data.info.json'
+        if not info_file.exists():
+            return False
+        
+        with open(info_file, 'r') as f:
+            info = json.load(f)
+        
+        # Check required fields
+        required_fields = ['device_info', 'channel_size', 'units', 'montage_type']
+        if not all(field in info for field in required_fields):
+            return False
+        
+        # Check channel size matches expected
+        if info['channel_size'] != 4:
+            return False
+        
+        # Check preprocessing info present
+        if 'selected_preprocessing' not in info or not info['selected_preprocessing']:
+            return False
+        
         return True
     
     def _report(self):

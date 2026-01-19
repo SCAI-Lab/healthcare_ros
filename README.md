@@ -6,7 +6,7 @@
 
 **High-level components**
 - `neurosity_driver`: ROS2 Python node that connects to Neurosity SDK and publishes `/neurosity/eeg` and `/neurosity/eeg_info`.
-- `eeg_saver.py`: Subscriber node that saves `healthcare_msgs/EEG` messages to `~/neurosity_logs/eeg_data.jsonl` (JSONL: one JSON object per line).
+- `eeg_saver.py`: Subscriber node that saves `healthcare_msgs/EEG` messages to `eeg_data/eeg_data.jsonl` (JSONL: one JSON object per line).
 - `eeg_simulator.py`: Optional simulator that publishes synthetic EEG data in the same `healthcare_msgs` format for testing without hardware.
 - `launch/start.sh`: Orchestration script that prepares the environment, builds packages (if needed), and starts the driver/simulator + saver.
 - `test_eeg_integration.py`: Automated integration test that validates the entire EEG pipeline (data format, channel count, sample consistency, quality scores).
@@ -37,25 +37,44 @@ SIMULATE=1 launch/start.sh
 
 ```bash
 # View node logs
-tail -f ~/neurosity_logs/neurosity_driver.log    # driver (real device)
-tail -f ~/neurosity_logs/eeg_simulator.log      # simulator (if SIMULATE=1)
-tail -f ~/neurosity_logs/eeg_saver.log          # saver (always)
+tail -f logs/neurosity_driver.log    # driver (real device)
+tail -f logs/eeg_simulator.log      # simulator (if SIMULATE=1)
+tail -f logs/eeg_saver.log          # saver (always)
 
 # View stored EEG samples (JSONL)
-head -3 ~/neurosity_logs/eeg_data.jsonl | python3 -m json.tool
+head -3 eeg_data/eeg_data.jsonl | python3 -m json.tool
 ```
+
+**Configuration Files**
+
+Several configuration files are required for full functionality but are not tracked in git for security/privacy reasons:
+
+1. **Neurosity Credentials** (required for real device, not for simulator):
+   - Location: `ros2_hc_drv/neurosity_driver/.env`
+   - Setup: Copy the example file and fill in your credentials:
+     ```bash
+     cd ros2_hc_drv/neurosity_driver/
+     cp .env.example .env
+     # Edit .env with your actual device ID, email, and password
+     ```
+   - Required keys:
+     ```
+     NEUROSITY_DEVICE_ID=your_device_id_here
+     NEUROSITY_EMAIL=your_email@example.com
+     NEUROSITY_PASSWORD=your_password_here
+     ```
+
+2. **ROS2 Node Parameters** (optional, for advanced configuration):
+   - Location: `config/params.yaml`
+   - Purpose: Device-specific parameters for Neurosity, OpenBCI, or EEG simulator nodes
+   - This file is currently a placeholder; add custom parameters as needed for your setup
+
+**Important:** The `.env` file and `config/*.yaml` files contain sensitive credentials and local configurations. They are excluded from version control (see `.gitignore`). Always create them from the provided `.example` templates.
 
 **Environment details and assumptions**
 - Python venv default path: `~/neurosity-venv` (configurable via `VENV_PATH` env var)
 - ROS2 distro default: `jazzy` (configurable via `ROS_DISTRO` env var)
 - Workspace default: `~/ros2_ws` (configurable via `WORKSPACE` env var)
-- Credential file for Neurosity (when using real device): place `.env` in the `neurosity_driver` package directory, example keys:
-
-```
-NEUROSITY_DEVICE_ID=your_device_id
-NEUROSITY_EMAIL=you@example.com
-NEUROSITY_PASSWORD=supersecret
-```
 
 **Installation / Build (manual steps)**
 1. Ensure ROS2 for your distro is installed and `source /opt/ros/$ROS_DISTRO/setup.bash` works.
@@ -80,7 +99,7 @@ source install/setup.bash
 ```
 
 **Simulator usage (recommended for testing)**
-- Start the simulator with `SIMULATE=1 launch/start.sh` — it will publish EEG messages to `/neurosity/eeg` in the same `healthcare_msgs` format and `eeg_saver` will record them to `~/neurosity_logs/eeg_data.jsonl`.
+- Start the simulator with `SIMULATE=1 launch/start.sh` — it will publish EEG messages to `/neurosity/eeg` in the same `healthcare_msgs` format and `eeg_saver` will record them to `eeg_data/eeg_data.jsonl`.
 
 **Testing & Validation**
 - **Automated integration test:** Run the full pipeline test (simulator + saver) and validate data format, structure, and completeness:
@@ -96,7 +115,7 @@ source install/setup.bash
 
 - **Data visualization:** Generate time-domain and frequency-spectrum plots from stored EEG data:
   ```bash
-  python3 visualize_eeg.py ~/neurosity_logs/eeg_data.jsonl
+  python3 visualize_eeg.py eeg_data/eeg_data.jsonl
   ```
   Outputs:
   - `eeg_time_domain.png` — 4 subplots (one per channel) with signal waveforms
@@ -114,7 +133,7 @@ export USE_ROSBAG=1
 Then run the pipeline as usual.
 
 **Data format**
-- Saved file: `~/neurosity_logs/eeg_data.jsonl`
+- Saved file: `eeg_data/eeg_data.jsonl`
 - Each line is a JSON object matching the `healthcare_msgs/EEG` message structure, for example:
 
 ```json

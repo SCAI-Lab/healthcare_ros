@@ -16,8 +16,9 @@ class TestEnhancedEEG(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.duration = 20
-        cls.workspace = Path.home() / 'ros2_ws' / 'src' / '-healthcare_msgs_demonstration'
-        cls.log_dir = Path.home() / 'neurosity_logs'
+        # Use relative path from test file location
+        cls.workspace = Path(__file__).parent.parent.resolve()
+        cls.log_dir = cls.workspace / 'logs'
         cls.data_file = cls.log_dir / 'eeg_data.jsonl'
         # Detect if JSON saver is running: file exists and USE_ROSBAG is not set to 1
         cls.use_json = (os.environ.get('USE_ROSBAG', '0') != '1')

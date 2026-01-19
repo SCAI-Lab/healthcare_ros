@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Non-interactive EEG Preprocessing ROS2 node.
+""" EEG Preprocessing ROS2 node.
 
 This module implements a lightweight preprocessing node that subscribes to
 `/eeg/raw` (type: `healthcare_msgs.msg.EEG`), optionally applies a
@@ -32,8 +32,9 @@ from preprocessing_tools import EEGPreprocessingTools
 
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, DurabilityPolicy
 
-from healthcare_msgs.msg import EEG  # Importing EEG message from healthcare_msgs
+from healthcare_msgs.msg import EEG, EEGInfo  # Importing EEG and EEGInfo messages from healthcare_msgs
 
 
 
@@ -74,9 +75,14 @@ class EEGPreprocessor(Node):
         self.buffer_size = int(self.buffer_duration * self.sampling_rate)
         self.data_buffer = []  # List of (eeg_array, msg) tuples
         self.num_channels = None
+        self.info_published = False
         
-        # Set up publisher and subscriber
+        # Create QoS profile with transient local durability for EEGInfo (latching)
+        info_qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        
+        # Set up publishers and subscribers
         self.pub = self.create_publisher(EEG, self.publish_topic, 10)
+        self.info_pub = self.create_publisher(EEGInfo, "/eeg/processed_info", qos_profile=info_qos)
         self.sub = self.create_subscription(EEG, "/eeg/raw", self._on_eeg, 10)
 
         # Initialize preprocessing tools
@@ -108,6 +114,11 @@ class EEGPreprocessor(Node):
             if self.num_channels is None:
                 self.num_channels = eeg_array.shape[0]
                 self.get_logger().info(f"Detected {self.num_channels} EEG channels")
+            
+            # Publish EEGInfo once after detecting channels
+            if not self.info_published and self.num_channels is not None:
+                self.publish_eeg_info()
+                self.info_published = True
             
             # Add to buffer
             self.data_buffer.append((eeg_array, msg))
@@ -195,6 +206,36 @@ class EEGPreprocessor(Node):
             self.get_logger().error(traceback.format_exc())
             # Clear buffer on error to prevent accumulation
             self.data_buffer.clear()
+    
+    def publish_eeg_info(self):
+        """
+        Publish EEGInfo metadata describing the preprocessed output.
+        """
+        info_msg = EEGInfo()
+        info_msg.device_info.session_id = 'preprocessed'
+        info_msg.channel_size = self.num_channels
+        info_msg.units = EEGInfo.UNIT_UV
+        
+        # Document the preprocessing steps applied
+        info_msg.selected_preprocessing = [
+            EEGInfo.EEG_PREPROC_BANDPASS,
+            EEGInfo.EEG_PREPROC_CAR  # Common Average Reference
+        ]
+        
+        # Preserve montage information (assumes referential input)
+        info_msg.montage_type = EEGInfo.MONTAGE_TYPE_REFERENTIAL
+        
+        # Note: Electrode sites and other details would ideally be copied from
+        # the upstream EEGInfo message. For now, we leave them unspecified.
+        # Future enhancement: subscribe to /eeg/raw_info and forward metadata.
+        
+        info_msg.signal_mode = EEGInfo.SIGNAL_MODE_SURFACE
+        
+        self.info_pub.publish(info_msg)
+        self.get_logger().info(
+            f'Published EEGInfo metadata: {self.num_channels} channels, '
+            f'{self.l_freq}-{self.h_freq} Hz bandpass, CAR applied'
+        )
 
 
 def main(args=None):

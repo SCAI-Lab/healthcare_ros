@@ -213,9 +213,16 @@ neurosity-venv/
 venv/
 
 # Local logs and saved EEG data
-/neurosity_logs/
+
+/logs/
 *.log
 *.jsonl
+
+# Configuration files with sensitive data
+.env
+*.env
+config/*.yaml
+config/*.yml
 
 # ROS build/install artifacts (workspace-local)
 /build/

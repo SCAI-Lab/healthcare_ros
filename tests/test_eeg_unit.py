@@ -201,6 +201,61 @@ class UnitTests:
         return all(is_reasonable(s) for s in reasonable_samples) and \
                not any(is_reasonable(s) for s in unreasonable_samples)
     
+    # ==== EEGINFO METADATA TESTS ====
+    
+    def test_eeginfo_structure(self):
+        """Test that EEGInfo contains required fields."""
+        # Simulate EEGInfo structure
+        info = {
+            'device_info': {'session_id': 'test_session'},
+            'channel_size': 4,
+            'units': 1,  # UNIT_UV
+            'selected_preprocessing': [1, 2],  # BANDPASS, NOTCH
+            'montage_type': 1,  # REFERENTIAL
+            'electrode_sites': [1, 2, 3, 4],  # FP1, FP2, F3, F4
+            'electrode_physical_type': [1, 1, 1, 1],  # DRY
+            'placement_method': [1, 1, 1, 1],  # 10-20
+            'signal_mode': 1,  # SURFACE
+        }
+        
+        required_fields = [
+            'device_info', 'channel_size', 'units', 'selected_preprocessing',
+            'montage_type', 'electrode_sites', 'signal_mode'
+        ]
+        
+        return all(field in info for field in required_fields) and \
+               info['channel_size'] == len(info['electrode_sites'])
+    
+    def test_eeginfo_storage(self):
+        """Test that EEGInfo can be stored and retrieved as JSON."""
+        info = {
+            'device_info': {'session_id': 'preprocessed'},
+            'channel_size': 4,
+            'units': 1,
+            'selected_preprocessing': [1, 4],  # BANDPASS, CAR
+            'montage_type': 1,
+            'electrode_sites': [],
+            'electrode_physical_type': [],
+            'placement_method': [],
+            'signal_mode': 1,
+        }
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            json.dump(info, f, indent=2)
+            temp_path = f.name
+        
+        try:
+            # Read back
+            with open(temp_path, 'r') as f:
+                loaded = json.load(f)
+            
+            # Verify
+            return loaded['channel_size'] == 4 and \
+                   loaded['device_info']['session_id'] == 'preprocessed' and \
+                   4 in loaded['selected_preprocessing']  # CAR preprocessing present
+        finally:
+            Path(temp_path).unlink()
+    
     def run_all(self):
         """Run all unit tests."""
         print("\n" + "=" * 70)
@@ -220,6 +275,10 @@ class UnitTests:
         self.test("Channel array consistency", self.test_channel_consistency)
         self.test("Timestamp monotonicity", self.test_timestamp_monotonicity)
         self.test("Amplitude bounds", self.test_amplitude_bounds)
+        
+        print("\nEEGInfo Metadata Tests:")
+        self.test("EEGInfo structure validation", self.test_eeginfo_structure)
+        self.test("EEGInfo storage format", self.test_eeginfo_storage)
         
         # Report
         passed = len(self.passed)

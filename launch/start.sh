@@ -5,7 +5,11 @@
 
 set -euo pipefail
 
-VENV_PATH="${VENV_PATH:-$HOME/neurosity-venv}"
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+VENV_PATH="${VENV_PATH:-$HOME/hcmd-venv}"
 WORKSPACE="${WORKSPACE:-$HOME/ros2_ws}"
 ROS_DISTRO="${ROS_DISTRO:-jazzy}"
 REBUILD="${REBUILD:-0}"
@@ -25,11 +29,11 @@ Environment variables:
   WORKSPACE   Path to ROS2 workspace (default: $WORKSPACE)
   ROS_DISTRO  ROS2 distro (default: $ROS_DISTRO)
 Commands:
-  run                      nach Setup den node `neurosity_driver` starten (ros2 run)
-  help                     diese Hilfe anzeigen
-  rqt                      starte rqt mit korrekten ROS2 Overlays
+  run         Start the neurosity_driver node after setup (ros2 run)
+  help        Show this help message
+  rqt         Start rqt with correct ROS2 overlays
 
-Beispiel:
+Example:
   ROS_DISTRO=humble VENV_PATH=~/venv $0 run
 EOF
 }
@@ -43,7 +47,10 @@ if [ "${1:-}" = "rqt" ]; then
     echo "Cleaning Snap and VSCode environment variables for rqt..."
     if [ "$VISUALIZATION_MODE" = "comparison" ]; then
         echo "Starting offline EEG comparison plotting script..."
-        python3 "$WORKSPACE/src/-healthcare_msgs_demonstration/plots/plot_eeg_comparison.py" &
+        # Get script directory and navigate to project root
+        SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+        python3 "$PROJECT_ROOT/plots/plot_eeg_comparison.py" &
     fi
     # Unset all known Snap and VSCode variables
     unset LD_LIBRARY_PATH
@@ -70,6 +77,7 @@ if [ "${1:-}" = "rqt" ]; then
     unset SNAP_COOKIE
     unset SNAP_REAL_HOME
     export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    
     set +u
     source /opt/ros/$ROS_DISTRO/setup.bash
     source "$WORKSPACE/install/setup.bash"
@@ -125,10 +133,15 @@ pip_install_if_missing() {
     fi
 }
 
-# empy provides module 'em' used by rosidl_adapter
+# Install all required packages
 pip_install_if_missing em empy
+pip_install_if_missing numpy numpy
+pip_install_if_missing scipy scipy
+pip_install_if_missing matplotlib matplotlib
+pip_install_if_missing yaml pyyaml
 pip_install_if_missing neurosity neurosity
 pip_install_if_missing dotenv python-dotenv
+pip_install_if_missing mne mne
 
 # 4) Change to workspace
 if [ -d "$WORKSPACE" ]; then
@@ -203,18 +216,81 @@ fi
 
 echo "--- Setup complete. Environment ready. ---"
 
+# Run tests if requested (RUN_TESTS=1)
+RUN_TESTS="${RUN_TESTS:-0}"
+if [ "$RUN_TESTS" -eq 1 ]; then
+    echo ""
+    echo "============================================"
+    echo "Running automated tests..."
+    echo "============================================"
+    
+    TEST_DIR="$PROJECT_ROOT/tests"
+    
+    # Run unit tests
+    if [ -f "$TEST_DIR/test_eeg_unit.py" ]; then
+        echo ""
+        echo "--- Running Unit Tests ---"
+        cd "$PROJECT_ROOT" || exit 1
+        "$VENV_PATH/bin/python3" tests/test_eeg_unit.py
+        UNIT_TEST_RESULT=$?
+    fi
+    
+    # Run integration tests (requires simulator to be running)
+    if [ -f "$TEST_DIR/test_eeg_integration.py" ]; then
+        echo ""
+        echo "--- Running Integration Tests ---"
+        echo "Starting simulator for integration tests..."
+        
+        # Start simulator temporarily
+        LOG_DIR="$PROJECT_ROOT/logs"
+        mkdir -p "$LOG_DIR"
+        SIM_SCRIPT="$PROJECT_ROOT/nodes/eeg_simulator.py"
+        nohup "$VENV_PATH/bin/python3" "$SIM_SCRIPT" >> "$LOG_DIR/test_simulator.log" 2>&1 &
+        TEST_SIM_PID=$!
+        
+        # Wait for simulator to initialize
+        sleep 3
+        
+        # Run integration tests
+        cd "$PROJECT_ROOT" || exit 1
+        "$VENV_PATH/bin/python3" tests/test_eeg_integration.py 10
+        INTEGRATION_TEST_RESULT=$?
+        
+        # Stop test simulator
+        kill $TEST_SIM_PID 2>/dev/null || true
+        pkill -f "eeg_simulator|eeg_json_saver" 2>/dev/null || true
+    fi
+    
+    echo ""
+    echo "============================================"
+    echo "Test Results Summary:"
+    echo "============================================"
+    [ "$UNIT_TEST_RESULT" -eq 0 ] && echo "✅ Unit Tests: PASSED" || echo "❌ Unit Tests: FAILED"
+    [ "$INTEGRATION_TEST_RESULT" -eq 0 ] && echo "✅ Integration Tests: PASSED" || echo "❌ Integration Tests: FAILED"
+    echo "============================================"
+    echo ""
+    
+    # Exit if RUN_NODE is not set (tests only mode)
+    if [ "${RUN_NODE:-0}" -eq 0 ]; then
+        exit 0
+    fi
+fi
+
 # Start the node in background by default (can be disabled with RUN_NODE=0)
 RUN_NODE="${RUN_NODE:-1}"
 SIMULATE="${SIMULATE:-0}"  # Set SIMULATE=1 to use EEG simulator instead of real device
+USE_OPENBCI="${USE_OPENBCI:-0}"  # Set USE_OPENBCI=1 to use OpenBCI device
+OPENBCI_PORT="${OPENBCI_PORT:-/dev/ttyUSB0}"  # OpenBCI serial port
+OPENBCI_CHANNELS="${OPENBCI_CHANNELS:-8}"  # OpenBCI channel count (8 or 16)
 
 if [ "$RUN_NODE" -eq 1 ]; then
-    LOG_DIR="$WORKSPACE/src/-healthcare_msgs_demonstration/logs"
+    LOG_DIR="$PROJECT_ROOT/logs"
     mkdir -p "$LOG_DIR"
     
     if [ "$SIMULATE" -eq 1 ]; then
         echo "Starting EEG SIMULATOR (not real device)..."
         SIM_LOG_FILE="$LOG_DIR/eeg_simulator.log"
-        SIM_SCRIPT="$WORKSPACE/src/-healthcare_msgs_demonstration/nodes/eeg_simulator.py"
+        SIM_SCRIPT="$PROJECT_ROOT/nodes/eeg_simulator.py"
         
         cd "$WORKSPACE" || { echo "ERROR: Could not cd to $WORKSPACE"; exit 1; }
         
@@ -222,13 +298,31 @@ if [ "$RUN_NODE" -eq 1 ]; then
         SIM_PID=$!
         echo "EEG simulator started with PID $SIM_PID. Logs: $SIM_LOG_FILE"
         echo "$SIM_PID" > "$LOG_DIR/eeg_simulator.pid"
+    elif [ "$USE_OPENBCI" -eq 1 ]; then
+        # Start OpenBCI driver node
+        echo "Starting OpenBCI driver node (port: $OPENBCI_PORT, channels: $OPENBCI_CHANNELS)..."
+        LOG_FILE="$LOG_DIR/openbci_driver.log"
+        
+        cd "$WORKSPACE" || { echo "ERROR: Could not cd to $WORKSPACE"; exit 1; }
+        
+        # Source ROS2 and workspace to use ros2 run
+        set +u
+        source "/opt/ros/$ROS_DISTRO/setup.bash"
+        source "$WORKSPACE/install/setup.bash"
+        set -u
+        
+        # Start OpenBCI driver with ros2 run
+        nohup ros2 run openbci_driver openbci_driver --ros-args -p port:="$OPENBCI_PORT" -p channel_count:=$OPENBCI_CHANNELS >> "$LOG_FILE" 2>&1 &
+        NODE_PID=$!
+        echo "openbci_driver started with PID $NODE_PID. Logs: $LOG_FILE"
+        echo "$NODE_PID" > "$LOG_DIR/openbci_driver.pid"
     else
         # Start neurosity_driver node
         echo "Starting neurosity_driver node in the background..."
         LOG_FILE="$LOG_DIR/neurosity_driver.log"
         
         # Change to package directory so load_dotenv() can find .env file
-        PACKAGE_DIR="$WORKSPACE/src/-healthcare_msgs_demonstration/ros2_hc_drv/neurosity_driver"
+        PACKAGE_DIR="$PROJECT_ROOT/ros2_hc_drv/neurosity_driver"
         
         cd "$PACKAGE_DIR" || { echo "ERROR: Could not cd to $PACKAGE_DIR"; exit 1; }
         
@@ -246,16 +340,17 @@ if [ "$RUN_NODE" -eq 1 ]; then
     # Start two EEGSaver nodes: one for raw, one for preprocessed
     echo "Starting EEG JSON saver node for raw data..."
     RAW_SAVER_LOG_FILE="$LOG_DIR/eeg_json_saver_raw.log"
-    RAW_SAVER_SCRIPT="$WORKSPACE/src/-healthcare_msgs_demonstration/nodes/eeg_json_saver.py"
-    nohup "$VENV_PATH/bin/python3" "$RAW_SAVER_SCRIPT" --ros-args -p topic:=/eeg/raw -p file_path:="$LOG_DIR/eeg_raw_data.jsonl" >> "$RAW_SAVER_LOG_FILE" 2>&1 &
+    RAW_SAVER_SCRIPT="$PROJECT_ROOT/nodes/eeg_json_saver.py"
+    EEG_DATA_DIR="$PROJECT_ROOT/eeg_data"
+    nohup "$VENV_PATH/bin/python3" "$RAW_SAVER_SCRIPT" --ros-args -p topic:=/eeg/raw -p file_path:="$EEG_DATA_DIR/eeg_raw_data.jsonl" >> "$RAW_SAVER_LOG_FILE" 2>&1 &
     RAW_SAVER_PID=$!
     echo "eeg_json_saver (raw) started with PID $RAW_SAVER_PID. Logs: $RAW_SAVER_LOG_FILE"
     echo "$RAW_SAVER_PID" > "$LOG_DIR/eeg_json_saver_raw.pid"
 
     echo "Starting EEG JSON saver node for preprocessed data..."
     PREPROC_SAVER_LOG_FILE="$LOG_DIR/eeg_json_saver_preprocessed.log"
-    PREPROC_SAVER_SCRIPT="$WORKSPACE/src/-healthcare_msgs_demonstration/nodes/eeg_json_saver.py"
-    nohup "$VENV_PATH/bin/python3" "$PREPROC_SAVER_SCRIPT" --ros-args -p topic:=/eeg/processed -p file_path:="$WORKSPACE/src/-healthcare_msgs_demonstration/eeg_data/eeg_preprocessed_data.jsonl" >> "$PREPROC_SAVER_LOG_FILE" 2>&1 &
+    PREPROC_SAVER_SCRIPT="$PROJECT_ROOT/nodes/eeg_json_saver.py"
+    nohup "$VENV_PATH/bin/python3" "$PREPROC_SAVER_SCRIPT" --ros-args -p topic:=/eeg/processed -p file_path:="$EEG_DATA_DIR/eeg_preprocessed_data.jsonl" >> "$PREPROC_SAVER_LOG_FILE" 2>&1 &
     PREPROC_SAVER_PID=$!
     echo "eeg_json_saver (preprocessed) started with PID $PREPROC_SAVER_PID. Logs: $PREPROC_SAVER_LOG_FILE"
     echo "$PREPROC_SAVER_PID" > "$LOG_DIR/eeg_json_saver_preprocessed.pid"
@@ -263,7 +358,7 @@ if [ "$RUN_NODE" -eq 1 ]; then
     # Start EEG Preprocessor node (optional)
     echo "Starting eeg_preprocessor node in the background..."
     PREPROC_LOG_FILE="$LOG_DIR/eeg_preprocessor.log"
-    PREPROC_SCRIPT="$WORKSPACE/src/-healthcare_msgs_demonstration/nodes/eeg_preprocessing/preprocessing.py"
+    PREPROC_SCRIPT="$PROJECT_ROOT/nodes/eeg_preprocessing/preprocessing.py"
     if [ -f "$PREPROC_SCRIPT" ]; then
         nohup "$VENV_PATH/bin/python3" "$PREPROC_SCRIPT" >> "$PREPROC_LOG_FILE" 2>&1 &
         PREPROC_PID=$!
@@ -284,7 +379,7 @@ if [ "$VISUALIZATION_MODE" = "comparison" ]; then
     python3 plots/plot_eeg_comparison.py &
 elif [ "$VISUALIZATION_MODE" = "rqt" ]; then
     echo "Starting rqt EEG visualization plugin..."
-    export RQT_PLUGIN_PATH="$WORKSPACE/src/-healthcare_msgs_demonstration/visualization/eeg_visualization_rqt"
+    export RQT_PLUGIN_PATH="$PROJECT_ROOT/visualization/eeg_visualization_rqt"
     rqt --standalone eeg_visualization_rqt &
 else
     echo "Visualization disabled."
@@ -352,7 +447,12 @@ if [ "$RUN_NODE" -eq 1 ]; then
         fi
     fi
 else
-    LOG_DIR="$WORKSPACE/src/-healthcare_msgs_demonstration/eeg_data"
+    LOG_DIR="$PROJECT_ROOT/logs"
+    echo ""
+    echo "============================================"
+    echo "Setup complete! Environment ready."
+    echo "============================================"
+    echo ""
     echo "Nodes are not running (RUN_NODE=0)."
     echo "To enable auto-start, use: RUN_NODE=1 ./start.sh"
     echo ""

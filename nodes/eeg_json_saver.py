@@ -16,7 +16,8 @@ Each line contains a fully serialized EEG message with all fields including:
 import json
 import rclpy
 from rclpy.node import Node
-from healthcare_msgs.msg import EEG
+from rclpy.qos import QoSProfile, DurabilityPolicy
+from healthcare_msgs.msg import EEG, EEGInfo
 from pathlib import Path
 import os
 
@@ -53,6 +54,10 @@ class EEGSaver(Node):
 
         self.data_file = Path(file_path)
         self.data_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Create metadata file path (same name with _info.json suffix)
+        self.info_file = self.data_file.with_suffix('').with_suffix('.info.json')
+        self.info_stored = False
 
         self.get_logger().info(f'EEG Saver initialized. Subscribing to: {topic}. Data will be saved to: {self.data_file}')
 
@@ -62,6 +67,35 @@ class EEGSaver(Node):
             topic,
             self.eeg_callback,
             10
+        )
+        
+        # Determine info topic based on data topic
+        if '/raw' in topic:
+            info_topic = '/eeg/raw_info'
+            info_pub_topic = '/eeg/raw_info'
+        elif '/processed' in topic:
+            info_topic = '/eeg/processed_info'
+            info_pub_topic = '/eeg/processed_info'
+        else:
+            info_topic = '/eeg/info'
+            info_pub_topic = '/eeg/info'
+        
+        # Create QoS profile with transient local durability for EEGInfo (latching)
+        info_qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        
+        # Subscribe to EEGInfo
+        self.info_subscription = self.create_subscription(
+            EEGInfo,
+            info_topic,
+            self.info_callback,
+            qos_profile=info_qos
+        )
+        
+        # Publisher to republish EEGInfo (for downstream consumers)
+        self.info_publisher = self.create_publisher(
+            EEGInfo,
+            info_pub_topic,
+            qos_profile=info_qos
         )
 
         self.message_count = 0
@@ -103,6 +137,42 @@ class EEGSaver(Node):
                 
         except Exception as e:
             self.get_logger().error(f'Error saving EEG message: {e}')
+    
+    def info_callback(self, msg: EEGInfo):
+        """Called when EEGInfo metadata is received.
+        Stores it once to a JSON file and republishes it."""
+        if self.info_stored:
+            return  # Only store once
+        
+        try:
+            # Convert EEGInfo to dictionary
+            info_data = {
+                'device_info': {
+                    'session_id': msg.device_info.session_id,
+                },
+                'channel_size': msg.channel_size,
+                'units': msg.units,
+                'selected_preprocessing': list(msg.selected_preprocessing),
+                'montage_type': msg.montage_type,
+                'electrode_sites': list(msg.electrode_sites),
+                'electrode_physical_type': list(msg.electrode_physical_type),
+                'placement_method': list(msg.placement_method),
+                'signal_mode': msg.signal_mode,
+            }
+            
+            # Store to file
+            with open(self.info_file, 'w') as f:
+                f.write(json.dumps(info_data, indent=2))
+            
+            self.info_stored = True
+            self.get_logger().info(f'Stored EEGInfo metadata to {self.info_file}')
+            
+            # Republish for downstream consumers
+            self.info_publisher.publish(msg)
+            self.get_logger().info('Republished EEGInfo metadata')
+            
+        except Exception as e:
+            self.get_logger().error(f'Error storing EEGInfo: {e}')
 
 
 def main(args=None):

@@ -1,222 +1,239 @@
-# Neurosity Driver Startup Commands
+# EEG Pipeline Startup Guide
 
-## Quick Start
+## Quick Start with start.sh
 
-To start the neurosity driver with automatic environment setup, run:
+The `start.sh` script handles all environment setup and node launching. Navigate to the project root and run:
 
 ```bash
-cd ~/ros2_ws/src/-healthcare_msgs_demonstration && ./start.sh
+./launch/start.sh
 ```
 
 This will:
-- Activate the Python virtual environment (`~/neurosity-venv`)
-- Source ROS2 Jazzy setup
-- Source the workspace overlay
-- Install missing Python dependencies
-- Build packages if needed
-- Start the neurosity_driver node in the background
-
-## Individual Steps (Manual Setup)
-
-If you prefer to set up the environment manually:
-
-### 1. Activate Virtual Environment
-```bash
-source ~/neurosity-venv/bin/activate
-```
-
-### 2. Source ROS2 Jazzy
-```bash
-source /opt/ros/jazzy/setup.bash
-```
-
-### 3. Source Workspace Overlay
-```bash
-source ~/ros2_ws/install/setup.bash
-```
-
-### 4. Start the Driver Node
-```bash
-cd ~/ros2_ws/src/-healthcare_msgs_demonstration/ros2_hc_drv/neurosity_driver
-python3 -m neurosity_driver.neurosity_driver
-```
-
-## View Logs
-
-To monitor the node in real-time:
-```bash
-tail -f ~/neurosity_logs/neurosity_driver.log
-```
-
-## Stop the Node
-
-If running in the background:
-```bash
-kill $(cat ~/neurosity_logs/neurosity_driver.pid)
-```
-
-Or to stop all Python processes:
-```bash
-killall -9 python3
-```
-
-## Check ROS2 Topics
-
-View available topics:
-```bash
-source ~/ros2_ws/install/setup.bash
-ros2 topic list
-```
-
-View EEG data stream:
-```bash
-source ~/ros2_ws/install/setup.bash
-ros2 topic echo /neurosity/eeg
-```
+- Create/activate Python virtual environment (default: `~/hcmd-venv`)
+- Source ROS2 setup (default: Jazzy)
+- Install missing Python dependencies (numpy, scipy, matplotlib, mne, etc.)
+- Build workspace packages if needed
+- Start the complete 4-node EEG pipeline:
+  1. **EEG Simulator**, **Neurosity Driver**, or **OpenBCI Driver** (depending on SIMULATE flag or device)
+  2. **Raw EEG Saver** - saves to `eeg_data/eeg_raw_data.jsonl`
+  3. **EEG Preprocessor** - applies bandpass filter (0.5-45 Hz) and CAR
+  4. **Preprocessed EEG Saver** - saves to `eeg_data/eeg_preprocessed_data.jsonl`
 
 ## Environment Variables
 
-You can control script behavior with environment variables:
+Control script behavior with these variables:
 
-- `NO_BUILD=1` - Skip building packages (use if already built)
-- `RUN_NODE=1` - Start the driver node (default: 1)
-- `SIMULATE=1` - Use EEG simulator instead of real device (default: 0)
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SIMULATE` | `0` | Set to `1` to use EEG simulator instead of real device |
+| `USE_OPENBCI` | `0` | Set to `1` to use OpenBCI device instead of Neurosity |
+| `OPENBCI_PORT` | `/dev/ttyUSB0` | Serial port for OpenBCI device |
+| `OPENBCI_CHANNELS` | `8` | Number of OpenBCI channels (8 or 16 with daisy) |
+| `RUN_NODE` | `1` | Set to `0` to only setup environment without starting nodes |
+| `RUN_TESTS` | `0` | Set to `1` to run unit and integration tests before starting nodes |
+| `NO_BUILD` | `0` | Set to `1` to skip building packages |
+| `REBUILD` | `0` | Set to `1` to force rebuild packages |
+| `VENV_PATH` | `~/hcmd-venv` | Path to Python virtual environment |
+| `WORKSPACE` | `~/ros2_ws` | Path to ROS2 workspace |
+| `ROS_DISTRO` | `jazzy` | ROS2 distribution name |
+| `VISUALIZATION_MODE` | `none` | Set to `comparison` for offline plotting, `rqt` for live visualization |
+
+## Common Usage Examples
+
+**Three EEG data source options:**
+1. **Simulator** - Generates synthetic EEG data (no hardware needed)
+2. **Neurosity** - Real EEG headset with WiFi connectivity (requires credentials)
+3. **OpenBCI** - Real EEG board with USB serial connection (requires hardware)
+
+### Run with simulator (no device needed)
+```bash
+SIMULATE=1 ./launch/start.sh
+```
+
+### Run with real Neurosity device
+```bash
+./launch/start.sh
+```
+*Requires `.env` file with credentials in `ros2_hc_drv/neurosity_driver/.env`*
+
+### Run with OpenBCI device
+```bash
+USE_OPENBCI=1 ./launch/start.sh
+
+# With custom port and 16 channels (with daisy board)
+USE_OPENBCI=1 OPENBCI_PORT=/dev/ttyUSB1 OPENBCI_CHANNELS=16 ./launch/start.sh
+```
+*Requires OpenBCI board connected via USB.*
+
+### Setup only (don't start nodes)
+```bash
+RUN_NODE=0 ./launch/start.sh
+```
+
+### Skip building (if already built)
+```bash
+NO_BUILD=1 SIMULATE=1 ./launch/start.sh
+```
+
+### Run with offline comparison plotting
+```bash
+SIMULATE=1 VISUALIZATION_MODE=comparison ./launch/start.sh
+```
+
+### Launch rqt for live visualization
+```bash
+./launch/start.sh rqt
+```
+
+### Run automated tests (unit + integration)
+```bash
+RUN_TESTS=1 RUN_NODE=0 ./launch/start.sh
+```
+*Runs unit tests and integration tests (with temporary simulator), then exits.*
+
+### Run tests then start pipeline
+```bash
+RUN_TESTS=1 SIMULATE=1 ./launch/start.sh
+```
+*Validates system with tests, then starts simulator and full pipeline.*
+
+## Monitor Running Pipeline
+
+### View logs in real-time
+```bash
+# From project root
+tail -f logs/eeg_simulator.log          # Simulator output
+tail -f logs/neurosity_driver.log       # Neurosity driver output
+tail -f logs/openbci_driver.log         # OpenBCI driver output
+tail -f logs/eeg_json_saver_raw.log     # Raw data saver
+tail -f logs/eeg_preprocessor.log       # Preprocessing node
+tail -f logs/eeg_json_saver_preprocessed.log  # Preprocessed data saver
+```
+
+### Check process status
+```bash
+# PIDs are stored in logs/ directory
+cat logs/eeg_simulator.pid
+cat logs/neurosity_driver.pid
+cat logs/openbci_driver.pid
+cat logs/eeg_json_saver_raw.pid
+cat logs/eeg_preprocessor.pid
+cat logs/eeg_json_saver_preprocessed.pid
+```
+
+### View data files
+```bash
+# From project root
+head -3 eeg_data/eeg_raw_data.jsonl | python3 -m json.tool
+head -3 eeg_data/eeg_preprocessed_data.jsonl | python3 -m json.tool
+
+# File sizes
+ls -lh eeg_data/
+```
+
+## Stop the Pipeline
+
+### Stop all nodes
+```bash
+# Kill by PID files
+kill $(cat logs/eeg_simulator.pid logs/eeg_json_saver_raw.pid logs/eeg_preprocessor.pid logs/eeg_json_saver_preprocessed.pid)
+
+# Or stop all Python processes (more aggressive)
+pkill -f "eeg_simulator|eeg_json_saver|preprocessing"
+```
+
+## Configuration
+
+### Required for Neurosity Device
+Create `ros2_hc_drv/neurosity_driver/.env` from the template:
+```bash
+cd ros2_hc_drv/neurosity_driver/
+cp .env.example .env
+# Edit .env with your actual credentials
+```
+
+### Required for OpenBCI Device
+OpenBCI driver is now integrated into start.sh. Configure via environment variables:
+- `USE_OPENBCI=1` - Enable OpenBCI mode
+- `OPENBCI_PORT` - Serial port (default: `/dev/ttyUSB0`)
+- `OPENBCI_CHANNELS` - Number of channels: 8 or 16 (default: 8)
 
 Example:
 ```bash
-cd ~/ros2_ws/src/-healthcare_msgs_demonstration && SIMULATE=1 NO_BUILD=1 RUN_NODE=1 ./start.sh
+USE_OPENBCI=1 OPENBCI_PORT=/dev/ttyUSB1 OPENBCI_CHANNELS=16 ./launch/start.sh
 ```
 
-## Testing & Validation
+### Optional Parameters
+Edit `config/params.yaml` for advanced node configuration (currently placeholder).
 
-### Run Unit Tests
-Test individual components (simulator, JSONL format, validation functions):
+## Visualization Options
 
+### Offline Comparison Plot
+Generates side-by-side comparison of raw vs preprocessed data:
 ```bash
-cd ~/ros2_ws/src/-healthcare_msgs_demonstration
-python3 test_eeg_unit.py
+VISUALIZATION_MODE=comparison ./launch/start.sh
+# Or run directly:
+python3 plots/plot_eeg_comparison.py
 ```
 
-Runs 8 independent tests:
-- Simulator signal generation and FFT frequency validation
-- JSONL write/read cycle and corruption detection
-- Quality score bounds, channel consistency, timestamp monotonicity, amplitude bounds
-
-**Status:** ✅ 8/8 passing
-
-### Run Basic Integration Test
-Test the complete EEG pipeline (simulator + saver) with 6 fundamental checks:
-
+### Live rqt Plugin
+Launch rqt with the EEG visualization plugin:
 ```bash
-cd ~/ros2_ws/src/-healthcare_msgs_demonstration
-python3 test_eeg_integration.py 15
+./launch/start.sh rqt
 ```
-
-Validates:
-- File format and JSONL validity
-- Message structure (header, session_id, eeg, quality fields)
-- 4-channel consistency
-- Sample count accuracy
-- Quality score bounds [0, 1]
-
-**Status:** ✅ 6/6 passing (tested with 38 messages, 9,728 samples)
-
-### Run Enhanced Integration Test
-Comprehensive validation with data loss detection, timestamp continuity, amplitude bounds, and performance metrics:
-
-```bash
-cd ~/ros2_ws/src/-healthcare_msgs_demonstration
-python3 test_eeg_enhanced.py 15
-```
-
-Adds 5 advanced checks:
-- Data loss detection (sequential message consistency)
-- Timestamp continuity (no time wrap, monotonic increase)
-- Signal amplitude bounds (±50 µV for simulator)
-- Message write performance (message rate monitoring)
-- Memory efficiency (bytes per sample)
-
-**Features:** Full performance metrics collection and data summary reporting
-
-### Generate EEG Plots & Statistics
-
-Visualize stored EEG data and generate time-domain + frequency-spectrum plots:
-
-```bash
-cd ~/ros2_ws/src/-healthcare_msgs_demonstration
-python3 visualize_eeg.py ~/neurosity_logs/eeg_data.jsonl
-```
-
-Outputs:
-- Console statistics (mean, std, min, max per channel in µV)
-- `eeg_time_domain.png` — Signal waveforms for 4 channels
-- `eeg_frequency_spectrum.png` — FFT plots with Alpha/Beta/Theta markers
-
-## Recommended Workflow
-
-1. **Quick validation (no device needed):**
-   ```bash
-   # Run all unit tests (8/8 passing)
-   python3 test_eeg_unit.py
-   
-   # Start simulator and validate basic pipeline (6 checks)
-   SIMULATE=1 ./start.sh &
-   sleep 10
-   python3 test_eeg_integration.py 10
-   ```
-
-2. **Comprehensive validation with advanced checks:**
-   ```bash
-   # Enhanced integration test (11 checks total)
-   SIMULATE=1 ./start.sh &
-   sleep 5
-   python3 test_eeg_enhanced.py 20
-   ```
-
-3. **Visualize captured data:**
-   ```bash
-   python3 visualize_eeg.py ~/neurosity_logs/eeg_data.jsonl
-   ```
-
-4. **With real Neurosity device:**
-   ```bash
-   ./start.sh  # Uses real device (requires .env credentials)
-   ```
-
-## Test Coverage Summary
-
-| Test Suite | Type | Checks | Status | Best For |
-|-----------|------|--------|--------|----------|
-| `test_eeg_unit.py` | Unit | 8 | ✅ 8/8 passing | Component validation, CI/CD |
-| `test_eeg_integration.py` | Integration | 6 | ✅ 6/6 passing | Quick smoke test |
-| `test_eeg_enhanced.py` | Integration | 11 | Ready | Full pipeline validation with performance metrics |
-| `visualize_eeg.py` | Analysis | Plots + stats | ✅ Tested | Data visualization and frequency analysis |
-
-## Required Files
-
-- `.env` file in `~/ros2_ws/src/-healthcare_msgs_demonstration/ros2_hc_drv/neurosity_driver/.env` with credentials:
-  ```
-  NEUROSITY_DEVICE_ID=your_device_id
-  NEUROSITY_EMAIL=your_email
-  NEUROSITY_PASSWORD=your_password
-  ```
 
 ## Troubleshooting
 
-### Check if node is running
+### Check environment setup
 ```bash
-ps aux | grep neurosity_driver
-```
-
-### Check venv activation
-```bash
+# Verify Python venv
 which python3
-```
-Should show: `/home/tjalf/neurosity-venv/bin/python3`
+# Should show: /home/<user>/hcmd-venv/bin/python3
 
-### View full logs
+# Verify ROS2 sourced
+echo $ROS_DISTRO
+# Should show: jazzy
+```
+
+### Build issues
 ```bash
-cat ~/neurosity_logs/neurosity_driver.log
-cat ~/neurosity_logs/eeg_simulator.log
-cat ~/neurosity_logs/eeg_saver.log
+# Force rebuild
+REBUILD=1 ./launch/start.sh
+
+# Or manually
+cd ~/ros2_ws
+colcon build --packages-select healthcare_msgs --symlink-install
+source install/setup.bash
+```
+
+### Missing dependencies
+The script auto-installs packages, but you can manually install:
+```bash
+source ~/hcmd-venv/bin/activate
+pip install numpy scipy matplotlib mne neurosity python-dotenv pyyaml
+```
+
+### No data being saved
+```bash
+# Check if nodes are running
+ps aux | grep -E "eeg_simulator|eeg_json_saver|preprocessing"
+
+# Check for errors in logs
+grep -i error logs/*.log
+
+# Verify data directory exists
+ls -la eeg_data/
+```
+
+### Run diagnostic tests
+```bash
+# Quick validation - setup environment and run all tests
+RUN_TESTS=1 RUN_NODE=0 ./launch/start.sh
+
+# This will:
+# 1. Setup Python venv and install dependencies
+# 2. Build ROS2 packages if needed
+# 3. Run unit tests (8 tests - signal generation, JSONL format, validation)
+# 4. Run integration tests (6 tests - file format, message structure, data consistency)
+# 5. Display summary of passed/failed tests
 ```
