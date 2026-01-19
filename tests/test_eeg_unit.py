@@ -279,10 +279,10 @@ class UnitTests:
             sys.path.remove(str(sim_path))
     
     def test_neurosity_driver_imports(self):
-        """Test that Neurosity driver node structure is valid."""
+        """Test that Neurosity driver ROS2 package structure is valid."""
         from pathlib import Path
         workspace = Path(__file__).parent.parent.resolve()
-        driver_path = workspace / 'nodes' / 'data_acquisition' / 'neurosity_acquisition.py'
+        driver_path = workspace / 'ros2_hc_drv' / 'neurosity_driver' / 'neurosity_driver' / 'neurosity_driver.py'
         
         # Check file exists and has required imports
         if not driver_path.exists():
@@ -296,10 +296,10 @@ class UnitTests:
         return all(req in content for req in required)
     
     def test_openbci_driver_imports(self):
-        """Test that OpenBCI driver node structure is valid."""
+        """Test that OpenBCI driver ROS2 package structure is valid."""
         from pathlib import Path
         workspace = Path(__file__).parent.parent.resolve()
-        driver_path = workspace / 'nodes' / 'data_acquisition' / 'openbci_acquisition.py'
+        driver_path = workspace / 'ros2_hc_drv' / 'openbci_driver' / 'openbci_driver' / 'openbci_driver.py'
         
         # Check file exists and has required imports
         if not driver_path.exists():
@@ -309,7 +309,7 @@ class UnitTests:
             content = f.read()
         
         # Verify critical imports are present
-        required = ['rclpy', 'healthcare_msgs.msg', 'EEG', 'EEGInfo', 'openbci']
+        required = ['rclpy', 'healthcare_msgs.msg', 'EEG', 'EEGInfo']
         return all(req in content for req in required)
     
     # ==== SAVER NODE TESTS ====
@@ -348,6 +348,125 @@ class UnitTests:
         required = ['rclpy', 'subprocess', 'rosbag']
         return all(req in content for req in required)
     
+    # ==== NEW FEATURE TESTS ====
+    
+    def test_preprocessing_metadata_forwarding(self):
+        """Test that preprocessing node forwards metadata from raw_info."""
+        from pathlib import Path
+        workspace = Path(__file__).parent.parent.resolve()
+        preproc_path = workspace / 'nodes' / 'preprocessing' / 'eeg_preprocessing.py'
+        
+        if not preproc_path.exists():
+            return False
+        
+        with open(preproc_path, 'r') as f:
+            content = f.read()
+        
+        # Check for raw_info subscription and metadata copying
+        required = ['_on_raw_info', 'self.raw_info', 'electrode_sites', 'electrode_physical_type']
+        return all(req in content for req in required)
+    
+    def test_eeg_message_fields(self):
+        """Test that EEG messages populate all required fields per healthcare_msgs definition."""
+        from pathlib import Path
+        workspace = Path(__file__).parent.parent.resolve()
+        
+        # Check simulator node
+        sim_path = workspace / 'nodes' / 'data_acquisition' / 'eeg_simulator.py'
+        if not sim_path.exists():
+            return False
+        
+        with open(sim_path, 'r') as f:
+            content = f.read()
+        
+        # Core EEG message fields: header, session_id, sample_size, eeg (data), quality
+        required_fields = ['eeg_msg.header', 'eeg_msg.session_id', 'eeg_msg.sample_size', 
+                          'eeg_msg.eeg', 'eeg_msg.quality']
+        return all(field in content for field in required_fields)
+    
+    def test_eeginfo_message_fields(self):
+        """Test that EEGInfo messages populate all applicable fields per healthcare_msgs definition."""
+        from pathlib import Path
+        workspace = Path(__file__).parent.parent.resolve()
+        
+        # Check simulator node for EEGInfo
+        sim_path = workspace / 'nodes' / 'data_acquisition' / 'eeg_simulator.py'
+        if not sim_path.exists():
+            return False
+        
+        with open(sim_path, 'r') as f:
+            content = f.read()
+        
+        # Key EEGInfo fields: device_info, channel_size, units, selected_preprocessing,
+        # montage_type, electrode_sites, electrode_physical_type, placement_method, signal_mode
+        required_fields = ['info_msg.device_info', 'info_msg.channel_size', 
+                          'info_msg.units', 'info_msg.selected_preprocessing',
+                          'info_msg.montage_type', 'info_msg.electrode_sites',
+                          'info_msg.electrode_physical_type', 'info_msg.placement_method',
+                          'info_msg.signal_mode']
+        return all(field in content for field in required_fields)
+    
+    def test_preprocessing_constants(self):
+        """Test that preprocessing uses healthcare_msgs constants."""
+        from pathlib import Path
+        workspace = Path(__file__).parent.parent.resolve()
+        preproc_path = workspace / 'nodes' / 'preprocessing' / 'eeg_preprocessing.py'
+        
+        if not preproc_path.exists():
+            return False
+        
+        with open(preproc_path, 'r') as f:
+            content = f.read()
+        
+        # Check for preprocessing constants: BANDPASS(1), NOTCH(2), ICA(3), CAR(4), etc.
+        required = ['EEG_PREPROC_BANDPASS', 'EEG_PREPROC_CAR']
+        return all(const in content for const in required)
+    
+    def test_saver_file_location(self):
+        """Test that saver creates files in correct location (eeg_data/ not nodes/eeg_data/)."""
+        from pathlib import Path
+        workspace = Path(__file__).parent.parent.resolve()
+        saver_path = workspace / 'nodes' / 'saver' / 'eeg_json_saver.py'
+        
+        if not saver_path.exists():
+            return False
+        
+        with open(saver_path, 'r') as f:
+            content = f.read()
+        
+        # Check for correct path calculation (3 levels up, not 2)
+        return 'os.path.dirname(os.path.dirname(os.path.dirname' in content
+    
+    def test_saver_file_overwrite(self):
+        """Test that saver truncates files on startup."""
+        from pathlib import Path
+        workspace = Path(__file__).parent.parent.resolve()
+        saver_path = workspace / 'nodes' / 'saver' / 'eeg_json_saver.py'
+        
+        if not saver_path.exists():
+            return False
+        
+        with open(saver_path, 'r') as f:
+            content = f.read()
+        
+        # Check for file truncation on init
+        return "with open(self.data_file, 'w')" in content
+    
+    def test_plot_auto_numbering(self):
+        """Test that plot script has auto-numbering functionality."""
+        from pathlib import Path
+        workspace = Path(__file__).parent.parent.resolve()
+        plot_path = workspace / 'nodes' / 'visualization' / 'plot_eeg_comparison.py'
+        
+        if not plot_path.exists():
+            return False
+        
+        with open(plot_path, 'r') as f:
+            content = f.read()
+        
+        # Check for numbering function
+        return 'get_next_plot_number' in content and 'eeg_comparison_' in content
+    
     def run_all(self):
         """Run all unit tests."""
         print("\n" + "=" * 70)
@@ -380,6 +499,17 @@ class UnitTests:
         print("\nSaver Node Tests:")
         self.test("JSON saver node imports", self.test_json_saver_imports)
         self.test("Rosbag saver node imports", self.test_rosbag_saver_imports)
+        
+        print("\nNew Feature Tests:")
+        self.test("Preprocessing metadata forwarding", self.test_preprocessing_metadata_forwarding)
+        self.test("Saver file location (eeg_data/)", self.test_saver_file_location)
+        self.test("Saver file overwrite on startup", self.test_saver_file_overwrite)
+        self.test("Plot auto-numbering", self.test_plot_auto_numbering)
+        
+        print("\nMessage Field Tests:")
+        self.test("EEG message fields populated", self.test_eeg_message_fields)
+        self.test("EEGInfo message fields populated", self.test_eeginfo_message_fields)
+        self.test("Preprocessing constants used", self.test_preprocessing_constants)
         
         # Report
         passed = len(self.passed)

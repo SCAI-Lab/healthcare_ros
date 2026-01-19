@@ -28,7 +28,8 @@ class EEGSaver(Node):
     def __init__(self):
         super().__init__('eeg_saver')
         import os
-        REPO_BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        # Get project root (3 levels up: nodes/saver/ -> nodes/ -> project_root/)
+        REPO_BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         DATA_DIR = os.path.join(REPO_BASE, 'eeg_data')
         os.makedirs(DATA_DIR, exist_ok=True)
 

@@ -316,7 +316,7 @@ if [ "$RUN_NODE" -eq 1 ]; then
         echo "openbci_driver started with PID $NODE_PID. Logs: $LOG_FILE"
         echo "$NODE_PID" > "$LOG_DIR/openbci_driver.pid"
     elif [ "$USE_ACQUISITION" -eq 2 ]; then
-        # Start neurosity_driver node
+        # Start neurosity_driver node using ros2 run
         echo "Starting neurosity_driver node in the background..."
         LOG_FILE="$LOG_DIR/neurosity_driver.log"
         
@@ -325,11 +325,11 @@ if [ "$RUN_NODE" -eq 1 ]; then
         
         cd "$PACKAGE_DIR" || { echo "ERROR: Could not cd to $PACKAGE_DIR"; exit 1; }
         
-        # Ensure venv python is used; install missing deps if needed
+        # Ensure venv has required dependencies
         "$VENV_PATH/bin/python3" -m pip install --quiet python-dotenv neurosity 2>/dev/null || true
         
-        # Use full path to python in venv to run the driver module directly
-        nohup "$VENV_PATH/bin/python3" -m neurosity_driver.neurosity_driver >> "$LOG_FILE" 2>&1 &
+        # Use ros2 run to start the driver (ROS2 will use the workspace overlay)
+        nohup ros2 run neurosity_driver neurosity_driver >> "$LOG_FILE" 2>&1 &
         NODE_PID=$!
         echo "neurosity_driver started with PID $NODE_PID. Logs: $LOG_FILE"
         echo "$NODE_PID" > "$LOG_DIR/neurosity_driver.pid"

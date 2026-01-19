@@ -25,8 +25,9 @@ class EEGIntegrationTest:
         self.verbose = verbose
         # Use relative path from test file location
         self.workspace = Path(__file__).parent.parent.resolve()
-        self.log_dir = self.workspace / 'eeg_data'
-        self.data_file = self.log_dir / 'eeg_raw_data.jsonl'
+        self.log_dir = self.workspace / 'logs'
+        self.data_dir = self.workspace / 'eeg_data'
+        self.data_file = self.data_dir / 'eeg_raw_data.jsonl'
         self.results = {'passed': [], 'failed': []}
         
     def log(self, msg):
@@ -77,6 +78,11 @@ class EEGIntegrationTest:
             subprocess.run(['bash', '-c', 'pkill -f "neurosity_driver|eeg_json_saver|eeg_simulator|eeg_preprocessor"'], 
                          stderr=subprocess.DEVNULL)
             time.sleep(0.5)
+            # Clean data files
+            for f in self.data_dir.glob('eeg*.*'):
+                f.unlink()
+                self.log(f"  Removed {f.name}")
+            # Clean log/pid files
             for f in self.log_dir.glob('eeg*.*'):
                 f.unlink()
                 self.log(f"  Removed {f.name}")
@@ -90,8 +96,9 @@ class EEGIntegrationTest:
             venv_path = os.environ.get('VIRTUAL_ENV', str(Path.home() / 'hcmd-venv'))
             python_exe = str(Path(venv_path) / 'bin' / 'python3')
             
-            # Ensure log directory exists
+            # Ensure directories exist
             self.log_dir.mkdir(exist_ok=True)
+            self.data_dir.mkdir(exist_ok=True)
             
             # Start simulator
             sim_script = self.workspace / 'nodes' / 'data_acquisition' / 'eeg_simulator.py'

@@ -76,6 +76,7 @@ class EEGPreprocessor(Node):
         self.data_buffer = []  # List of (eeg_array, msg) tuples
         self.num_channels = None
         self.info_published = False
+        self.raw_info = None  # Store raw EEGInfo metadata
         
         # Create QoS profile with transient local durability for EEGInfo (latching)
         info_qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
@@ -84,12 +85,22 @@ class EEGPreprocessor(Node):
         self.pub = self.create_publisher(EEG, self.publish_topic, 10)
         self.info_pub = self.create_publisher(EEGInfo, "/eeg/processed_info", qos_profile=info_qos)
         self.sub = self.create_subscription(EEG, "/eeg/raw", self._on_eeg, 10)
+        
+        # Subscribe to raw EEGInfo to copy upstream metadata
+        self.info_sub = self.create_subscription(EEGInfo, "/eeg/raw_info", self._on_raw_info, qos_profile=info_qos)
 
         # Initialize preprocessing tools
         self.tools = EEGPreprocessingTools()
 
         self.get_logger().info(f"EEGPreprocessor initialized. Buffer: {self.buffer_duration}s ({self.buffer_size} samples)")
         self.get_logger().info(f"Filtering: {self.l_freq}-{self.h_freq} Hz, Publishing to: {self.publish_topic}")
+
+    def _on_raw_info(self, msg: EEGInfo) -> None:
+        """
+        Callback for raw EEGInfo metadata. Stores it for forwarding with preprocessing annotations.
+        """
+        self.raw_info = msg
+        self.get_logger().info(f"Received raw EEGInfo: {msg.channel_size} channels")
 
     def _on_eeg(self, msg: EEG) -> None:
         """
@@ -210,30 +221,40 @@ class EEGPreprocessor(Node):
     def publish_eeg_info(self):
         """
         Publish EEGInfo metadata describing the preprocessed output.
+        Copies upstream metadata and adds preprocessing annotations.
         """
         info_msg = EEGInfo()
-        info_msg.device_info.session_id = 'preprocessed'
-        info_msg.channel_size = self.num_channels
-        info_msg.units = EEGInfo.UNIT_UV
         
-        # Document the preprocessing steps applied
+        # Copy metadata from raw EEGInfo if available
+        if self.raw_info is not None:
+            info_msg.device_info = self.raw_info.device_info
+            info_msg.channel_size = self.raw_info.channel_size
+            info_msg.units = self.raw_info.units
+            info_msg.montage_type = self.raw_info.montage_type
+            info_msg.electrode_sites = self.raw_info.electrode_sites
+            info_msg.electrode_physical_type = self.raw_info.electrode_physical_type
+            info_msg.placement_method = self.raw_info.placement_method
+            info_msg.signal_mode = self.raw_info.signal_mode
+            info_msg.bipolar_active_sites = self.raw_info.bipolar_active_sites
+            info_msg.bipolar_reference_sites = self.raw_info.bipolar_reference_sites
+            info_msg.reference_sites = self.raw_info.reference_sites
+        else:
+            # Fallback if raw info not available
+            info_msg.device_info.session_id = 'preprocessed'
+            info_msg.channel_size = self.num_channels
+            info_msg.units = EEGInfo.UNIT_UV
+            info_msg.montage_type = EEGInfo.MONTAGE_TYPE_REFERENTIAL
+            info_msg.signal_mode = EEGInfo.SIGNAL_MODE_SURFACE
+        
+        # Add preprocessing steps applied by this node
         info_msg.selected_preprocessing = [
             EEGInfo.EEG_PREPROC_BANDPASS,
             EEGInfo.EEG_PREPROC_CAR  # Common Average Reference
         ]
         
-        # Preserve montage information (assumes referential input)
-        info_msg.montage_type = EEGInfo.MONTAGE_TYPE_REFERENTIAL
-        
-        # Note: Electrode sites and other details would ideally be copied from
-        # the upstream EEGInfo message. For now, we leave them unspecified.
-        # Future enhancement: subscribe to /eeg/raw_info and forward metadata.
-        
-        info_msg.signal_mode = EEGInfo.SIGNAL_MODE_SURFACE
-        
         self.info_pub.publish(info_msg)
         self.get_logger().info(
-            f'Published EEGInfo metadata: {self.num_channels} channels, '
+            f'Published EEGInfo metadata: {info_msg.channel_size} channels, '
             f'{self.l_freq}-{self.h_freq} Hz bandpass, CAR applied'
         )
 

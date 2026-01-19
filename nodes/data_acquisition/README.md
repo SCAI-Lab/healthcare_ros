@@ -1,30 +1,42 @@
 # EEG Data Acquisition Drivers
 
-This directory contains ROS2 driver nodes for various EEG hardware devices.
+This directory contains data acquisition nodes for the EEG processing pipeline.
 
 ## Available Drivers
 
-### 1. Neurosity Driver (`neurosity_acquisition.py`)
+### 1. EEG Simulator (`eeg_simulator.py`)
+Generates synthetic EEG data for testing without hardware.
+
+**Usage:**
+```bash
+python3 eeg_simulator.py
+```
+
+### 2. Neurosity Driver (ROS2 Package)
+Located in `ros2_hc_drv/neurosity_driver/`
+
 Connects to Neurosity Crown headset via WiFi.
 
 **Requirements:**
 - Neurosity SDK: `pip install neurosity`
-- Credentials in `.env` file (see below)
+- Credentials in `.env` file in the package directory
 
 **Usage:**
 ```bash
-python3 neurosity_acquisition.py
+ros2 run neurosity_driver neurosity_driver
 ```
 
 **Configuration:**
-Create a `.env` file with:
+Create a `.env` file in `ros2_hc_drv/neurosity_driver/` with:
 ```
 NEUROSITY_DEVICE_ID=your-device-id
 NEUROSITY_EMAIL=your-email@example.com
 NEUROSITY_PASSWORD=your-password
 ```
 
-### 2. OpenBCI Driver (`openbci_acquisition.py`)
+### 3. OpenBCI Driver (ROS2 Package)
+Located in `ros2_hc_drv/openbci_driver/`
+
 Connects to OpenBCI Cyton board via USB serial.
 
 **Requirements:**
@@ -34,15 +46,11 @@ Connects to OpenBCI Cyton board via USB serial.
 **Usage:**
 ```bash
 # 8 channels (Cyton only)
-python3 openbci_acquisition.py --port /dev/ttyUSB0 --channels 8
+ros2 run openbci_driver openbci_driver --ros-args -p port:=/dev/ttyUSB0 -p channel_count:=8
 
 # 16 channels (Cyton + Daisy)
-python3 openbci_acquisition.py --port /dev/ttyUSB0 --channels 16
+ros2 run openbci_driver openbci_driver --ros-args -p port:=/dev/ttyUSB0 -p channel_count:=16
 ```
-
-**Command line arguments:**
-- `--port`: Serial port (default: `/dev/ttyUSB0`)
-- `--channels`: Number of channels: 8 or 16 (default: 8)
 
 ## Standardized Topics
 
@@ -55,26 +63,27 @@ All drivers publish to:
 These drivers are integrated into the main `launch/start.sh` script:
 
 ```bash
-# Use Neurosity device
+# Use simulator (default)
 ./launch/start.sh
 
 # Use OpenBCI device
-USE_OPENBCI=1 OPENBCI_PORT=/dev/ttyUSB0 OPENBCI_CHANNELS=8 ./launch/start.sh
+USE_ACQUISITION=1 OPENBCI_PORT=/dev/ttyUSB0 OPENBCI_CHANNELS=8 ./launch/start.sh
 
-# Use simulator (no hardware)
-SIMULATE=1 ./launch/start.sh
+# Use Neurosity device
+USE_ACQUISITION=2 ./launch/start.sh
 ```
 
 ## Adding New Drivers
 
 To add a new EEG device driver:
 
-1. Create `new_device_driver.py` in this directory
+1. Create a ROS2 package in `ros2_hc_drv/new_device_driver/`
 2. Implement a ROS2 node that publishes to:
    - `/eeg/raw` with EEG messages
    - `/eeg/raw_info` with EEGInfo metadata (use latching QoS)
-3. Follow the pattern in existing drivers
-4. Update this README
+3. Follow the pattern in `neurosity_driver` or `openbci_driver`
+4. Add integration to `launch/start.sh`
+5. Update this README
 
 **Key requirements:**
 - Use `QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)` for EEGInfo

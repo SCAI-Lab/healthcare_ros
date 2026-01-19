@@ -40,21 +40,21 @@ For detailed usage and configuration options, see [`launch/STARTUP_COMMANDS.md`]
 
 ### Components
 
-**1. Data Acquisition** (`nodes/data_acquisition/`)
-- **Simulator** - Synthetic EEG data for testing
-- **Neurosity** - Neurosity Crown headset (WiFi)
-- **OpenBCI** - OpenBCI Cyton board (USB serial)
+**1. Data Acquisition** (`nodes/data_acquisition/` and `ros2_hc_drv/`)
+- **Simulator** - Synthetic EEG data for testing (`nodes/data_acquisition/eeg_simulator.py`)
+- **Neurosity** - Neurosity Crown headset via ROS2 package (`ros2_hc_drv/neurosity_driver/`)
+- **OpenBCI** - OpenBCI Cyton board via ROS2 package (`ros2_hc_drv/openbci_driver/`)
 
 **2. Preprocessing** (`nodes/preprocessing/`)
 - **EEG Preprocessor** - Bandpass filtering (0.5-45 Hz) and Common Average Reference (CAR)
 
 **3. Data Savers** (`nodes/saver/`)
-- **JSON Saver** - Stores data in JSONL format with metadata
+- **JSON Saver** - Stores data in JSONL format with metadata (overwrites on startup)
 - **Rosbag Saver** - Records to MCAP format for ROS2 playback
 
 **4. Visualization** (`nodes/visualization/`)
 - **RQT Plugin** - Real-time plotting GUI
-- **Offline Plotter** - Static comparison plots
+- **Offline Plotter** - Static comparison plots (auto-numbered, saves to `plots/`)
 
 ### Standardized Topics
 
@@ -205,12 +205,15 @@ RUN_TESTS=1 RUN_NODE=0 ./launch/start.sh
 
 ### Simulator
 Generates synthetic 4-channel EEG with realistic brain signals (alpha, beta, theta waves).
+Located in `nodes/data_acquisition/eeg_simulator.py`.
 
 ### Neurosity Crown
-WiFi connection via Neurosity SDK. Requires `.env` credentials.
+WiFi connection via Neurosity SDK. Implemented as ROS2 package in `ros2_hc_drv/neurosity_driver/`.
+Requires `.env` credentials in the driver package directory.
 
 ### OpenBCI Cyton
-USB serial connection. Supports 8 or 16 channels (with Daisy board).
+USB serial connection via ROS2 package in `ros2_hc_drv/openbci_driver/`.
+Supports 8 or 16 channels (with Daisy board). Configured via ROS2 parameters.
 
 **Details:** See [`nodes/data_acquisition/README.md`](nodes/data_acquisition/README.md)
 
@@ -223,8 +226,13 @@ VISUALIZATION_MODE=rqt ./launch/start.sh
 
 ### Offline Plotting
 ```bash
+# Generate 2-second comparison plot (auto-numbered)
+python nodes/visualization/plot_eeg_comparison.py
+
+# Or start with visualization mode
 VISUALIZATION_MODE=comparison ./launch/start.sh
 ```
+Plots are saved to `plots/eeg_comparison_NNN.png` with auto-incrementing numbers.
 
 **Details:** See [`nodes/visualization/README.md`](nodes/visualization/README.md)
 
