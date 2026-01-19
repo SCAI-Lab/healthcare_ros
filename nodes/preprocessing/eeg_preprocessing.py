@@ -1,14 +1,91 @@
 #!/usr/bin/env python3
-""" EEG Preprocessing ROS2 node.
+"""
+EEG Preprocessing Node - ROS2 Pipeline Component
 
-This module implements a lightweight preprocessing node that subscribes to
-`/eeg/raw` (type: `healthcare_msgs.msg.EEG`), optionally applies a
-band-pass filter and downsampling, rounds values to reduce payload size, and
-publishes the processed messages on a configurable topic (default
-`/eeg/processed`).
+Real-time EEG signal preprocessing node that applies digital filtering and
+re-referencing techniques to improve signal quality. Designed for headless
+deployment in automated pipelines.
 
-This file intentionally contains no console prompts or interactive input so it
-can be used inside headless deployments and ROS launch scripts.
+Processing Pipeline
+-------------------
+1. Subscribe to raw EEG data from /eeg/raw
+2. Apply Butterworth bandpass filter (0.5-45 Hz)
+3. Apply Common Average Reference (CAR)
+4. Optional: Downsample and round for storage efficiency
+5. Publish processed data to /eeg/processed
+6. Forward metadata with preprocessing annotations
+
+Topics Subscribed
+-----------------
+/eeg/raw : healthcare_msgs.msg.EEG
+    Raw EEG data from acquisition devices
+/eeg/raw_info : healthcare_msgs.msg.EEGInfo
+    Raw metadata (latched, QoS: transient_local)
+
+Topics Published
+----------------
+/eeg/processed : healthcare_msgs.msg.EEG
+    Filtered and referenced EEG data
+/eeg/processed_info : healthcare_msgs.msg.EEGInfo
+    Metadata with preprocessing annotations (latched)
+
+Parameters
+----------
+l_freq : float, default=0.5
+    Low frequency cutoff for bandpass filter (Hz)
+h_freq : float, default=45.0
+    High frequency cutoff for bandpass filter (Hz)
+sampling_rate : float, default=256.0
+    Sampling frequency in Hz
+downsample_factor : int, default=1
+    Downsampling factor (1=no downsampling)
+round_precision : int, default=3
+    Decimal places for rounding (reduces storage size)
+publish_topic : str, default="/eeg/processed"
+    Topic for publishing processed data
+
+Preprocessing Methods
+---------------------
+Bandpass Filter:
+    4th-order Butterworth filter removes DC drift (high-pass) and
+    high-frequency noise (low-pass). Default 0.5-45 Hz preserves
+    delta through gamma bands.
+
+Common Average Reference (CAR):
+    Subtracts the average of all channels from each channel:
+    CAR_i = X_i - mean(X_all)
+    Removes common-mode artifacts while preserving channel-specific activity.
+
+Metadata Forwarding:
+    Copies all upstream metadata (device info, electrodes, montage) and
+    adds preprocessing method constants:
+    - EEG_PREPROC_BANDPASS (1)
+    - EEG_PREPROC_CAR (4)
+
+Examples
+--------
+Run with defaults:
+    $ ros2 run healthcare_msgs eeg_preprocessor
+
+Custom filter parameters:
+    $ ros2 run healthcare_msgs eeg_preprocessor --ros-args \
+        -p l_freq:=1.0 -p h_freq:=30.0 -p downsample_factor:=2
+
+Run via launch script:
+    $ ./launch/start.sh  # Automatically starts preprocessor
+
+Notes
+-----
+- Designed for headless operation (no interactive prompts)
+- Uses scipy.signal for filtering, MNE concepts for referencing
+- Latched QoS ensures late subscribers receive metadata
+- Buffer management prevents memory growth in long sessions
+
+See Also
+--------
+eeg_preprocessing_tools.EEGPreprocessingTools : Advanced MNE-based tools
+healthcare_msgs.msg.EEG : EEG message definition
+healthcare_msgs.msg.EEGInfo : EEG metadata with preprocessing constants
 """
 
 from __future__ import annotations
@@ -97,7 +174,21 @@ class EEGPreprocessor(Node):
 
     def _on_raw_info(self, msg: EEGInfo) -> None:
         """
-        Callback for raw EEGInfo metadata. Stores it for forwarding with preprocessing annotations.
+        Callback for receiving raw EEG metadata.
+        
+        Stores the raw EEGInfo message for later use when publishing processed metadata.
+        This enables forwarding of upstream device information and electrode configuration
+        to the processed data stream.
+        
+        Parameters
+        ----------
+        msg : healthcare_msgs.msg.EEGInfo
+            Raw EEG metadata including device info, electrode sites, and configuration.
+            
+        Notes
+        -----
+        Uses latching QoS (transient local durability) to ensure late-joining nodes
+        receive the metadata even if published before subscription.
         """
         self.raw_info = msg
         self.get_logger().info(f"Received raw EEGInfo: {msg.channel_size} channels")

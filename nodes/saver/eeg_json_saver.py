@@ -1,16 +1,103 @@
 #!/usr/bin/env python3
 """
-EEG Data Saver Node
+EEG JSON Saver Node - Data Persistence Component
 
-Subscribes to the /neurosity/eeg topic and saves all incoming messages
-to a JSONL file (one JSON object per line) in the complete healthcare_msgs format.
+ROS2 node for saving EEG data streams to JSONL (JSON Lines) format.
+Provides human-readable, line-by-line storage of EEG messages following
+the healthcare_msgs standard.
 
-Each line contains a fully serialized EEG message with all fields including:
-- header (timestamp, frame_id)
-- session_id
-- sample_size
-- eeg (flattened array of samples)
-- quality (per-channel quality scores)
+File Format: JSONL (JSON Lines)
+--------------------------------
+Each line is a complete, independently parseable JSON object containing
+one EEG message with all fields. This format enables:
+- Streaming writes without holding data in memory
+- Line-by-line reading for analysis
+- Robustness to incomplete writes (partial files remain valid)
+- Easy inspection with standard tools (grep, jq, etc.)
+
+Topics Subscribed
+-----------------
+/eeg/raw : healthcare_msgs.msg.EEG (default)
+    Raw or processed EEG data to save
+/eeg/raw_info : healthcare_msgs.msg.EEGInfo (default)
+    Metadata saved separately as .info.json (latched)
+
+File Organization
+-----------------
+Data files:
+    eeg_data/eeg_raw_data.jsonl          # Raw EEG data
+    eeg_data/eeg_raw_data.info.json      # Raw metadata
+    eeg_data/eeg_preprocessed_data.jsonl # Processed EEG data
+    eeg_data/eeg_preprocessed_data.info.json # Processed metadata
+
+Log files:
+    logs/eeg_json_saver_raw.log          # Node logs
+    logs/eeg_json_saver_raw.pid          # Process ID
+
+Parameters
+----------
+topic : str, default="/neurosity/eeg"
+    EEG data topic to subscribe to
+file_path : str, default="eeg_data/eeg_raw_data.jsonl"
+    Output JSONL file path
+
+EEG Message Fields Saved
+------------------------
+- header.stamp : Timestamp (seconds, nanoseconds)
+- header.frame_id : Device identifier
+- session_id : Unique session identifier
+- sample_size : Samples per channel
+- eeg : Flattened float64 array [ch0_samples, ch1_samples, ...]
+- quality : Per-channel quality scores [0.0-1.0]
+
+EEGInfo Fields Saved
+--------------------
+- device_info : Device identifier, session ID
+- channel_size : Number of channels
+- units : Measurement units (0=µV, 1=mV, 2=V)
+- selected_preprocessing : List of preprocessing methods applied
+- montage_type : Referential, bipolar, or average reference
+- electrode_sites : Electrode names (e.g., ["Fp1", "Fp2", "C3", "C4"])
+- electrode_physical_type : Cup, disk, needle, etc.
+- placement_method : 10-20, 10-10, or 10-5 system
+- signal_mode : Surface, intracranial, or scalp
+
+File Management
+---------------
+- Files are truncated on node startup (prevents appending to old data)
+- Parent directories created automatically
+- Metadata published once via latched topic, saved separately
+- Atomic writes ensure data consistency
+
+Examples
+--------
+Save raw data (default):
+    $ ros2 run healthcare_msgs eeg_json_saver
+
+Save preprocessed data:
+    $ ros2 run healthcare_msgs eeg_json_saver --ros-args \
+        -p topic:=/eeg/processed \
+        -p file_path:=eeg_data/eeg_preprocessed_data.jsonl
+
+Run via launch script (starts both raw and preprocessed savers):
+    $ ./launch/start.sh
+
+Read saved data:
+    $ cat eeg_data/eeg_raw_data.jsonl | jq '.eeg | length'
+    $ grep quality eeg_data/eeg_raw_data.jsonl | jq '.quality'
+
+Notes
+-----
+- JSONL format enables streaming analysis without loading entire file
+- Each line is ~1-10 KB depending on channel count and samples
+- Quality scores are per-channel, not per-sample
+- Timestamps use ROS2 time (can be simulated or system time)
+
+See Also
+--------
+eeg_rosbag_saver.py : Alternative MCAP/ROS2 bag format saver
+healthcare_msgs.msg.EEG : EEG message definition
+healthcare_msgs.msg.EEGInfo : EEG metadata definition
 """
 
 import json
@@ -25,6 +112,33 @@ import os
 
 
 class EEGSaver(Node):
+    """
+    ROS2 node for saving EEG data to JSONL format.
+    
+    Subscribes to EEG data and EEGInfo topics, saving messages to JSONL files.
+    Each line in the output file is a complete JSON object with all message fields.
+    
+    Parameters (ROS2 CLI)
+    ---------------------
+    topic : str, optional
+        Topic to subscribe to (default: '/neurosity/eeg')
+    file_path : str, optional
+        Output JSONL file path (default: 'eeg_data/eeg_raw_data.jsonl')
+    
+    File Organization
+    -----------------
+    - Data files: eeg_data/*.jsonl, eeg_data/*.info.json
+    - Log files: logs/*.log
+    - PID files: logs/*.pid
+    
+    Examples
+    --------
+    Save raw data (default):
+    $ ros2 run healthcare_msgs eeg_json_saver
+    
+    Save preprocessed data:
+    $ ros2 run healthcare_msgs eeg_json_saver --ros-args -p topic:=/eeg/processed
+    """
     def __init__(self):
         super().__init__('eeg_saver')
         import os

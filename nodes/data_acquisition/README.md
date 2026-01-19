@@ -13,7 +13,7 @@ python3 eeg_simulator.py
 ```
 
 ### 2. Neurosity Driver (ROS2 Package)
-Located in `ros2_hc_drv/neurosity_driver/`
+Located in `neurosity_driver/`
 
 Connects to Neurosity Crown headset via WiFi.
 
@@ -27,7 +27,7 @@ ros2 run neurosity_driver neurosity_driver
 ```
 
 **Configuration:**
-Create a `.env` file in `ros2_hc_drv/neurosity_driver/` with:
+Create a `.env` file in `nodes/data_acquisition/neurosity_driver/` with:
 ```
 NEUROSITY_DEVICE_ID=your-device-id
 NEUROSITY_EMAIL=your-email@example.com
@@ -35,7 +35,7 @@ NEUROSITY_PASSWORD=your-password
 ```
 
 ### 3. OpenBCI Driver (ROS2 Package)
-Located in `ros2_hc_drv/openbci_driver/`
+Located in `openbci_driver/`
 
 Connects to OpenBCI Cyton board via USB serial.
 
@@ -77,7 +77,7 @@ USE_ACQUISITION=2 ./launch/start.sh
 
 To add a new EEG device driver:
 
-1. Create a ROS2 package in `ros2_hc_drv/new_device_driver/`
+1. Create a ROS2 package in `nodes/data_acquisition/new_device_driver/`
 2. Implement a ROS2 node that publishes to:
    - `/eeg/raw` with EEG messages
    - `/eeg/raw_info` with EEGInfo metadata (use latching QoS)

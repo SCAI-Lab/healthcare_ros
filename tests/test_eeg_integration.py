@@ -240,12 +240,12 @@ class EEGIntegrationTest:
     
     def _test_info_file_exists(self):
         """Check if EEGInfo metadata file exists."""
-        info_file = self.log_dir / 'eeg_raw_data.info.json'
+        info_file = self.data_dir / 'eeg_raw_data.info.json'
         return info_file.exists()
     
     def _test_info_metadata_valid(self):
         """Validate EEGInfo metadata structure."""
-        info_file = self.log_dir / 'eeg_raw_data.info.json'
+        info_file = self.data_dir / 'eeg_raw_data.info.json'
         if not info_file.exists():
             return False
         
@@ -281,13 +281,13 @@ class EEGIntegrationTest:
     def _test_acquisition_structure(self):
         """Verify data_acquisition directory contains all drivers."""
         acq_dir = self.workspace / 'nodes' / 'data_acquisition'
-        required_files = [
+        required_items = [
             'eeg_simulator.py',
-            'neurosity_acquisition.py',
-            'openbci_acquisition.py',
+            'neurosity_driver',  # ROS2 package directory
+            'openbci_driver',    # ROS2 package directory
             'README.md'
         ]
-        return all((acq_dir / f).exists() for f in required_files)
+        return all((acq_dir / f).exists() for f in required_items)
     
     def _report(self):
         """Print test results."""

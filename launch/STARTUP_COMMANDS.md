@@ -61,7 +61,7 @@ USE_ACQUISITION=0 ./launch/start.sh
 ```bash
 USE_ACQUISITION=2 ./launch/start.sh
 ```
-*Requires `.env` file with credentials in `ros2_hc_drv/neurosity_driver/.env`*
+*Requires `.env` file with credentials in `nodes/data_acquisition/neurosity_driver/.env`*
 
 ### Run with OpenBCI device
 ```bash
@@ -152,9 +152,9 @@ pkill -f "eeg_simulator|eeg_json_saver|preprocessing"
 ## Configuration
 
 ### Required for Neurosity Device
-Create `ros2_hc_drv/neurosity_driver/.env` from the template:
+Create `nodes/data_acquisition/neurosity_driver/.env` from the template:
 ```bash
-cd ros2_hc_drv/neurosity_driver/
+cd nodes/data_acquisition/neurosity_driver/
 cp .env.example .env
 # Edit .env with your actual credentials
 ```

@@ -1,3 +1,74 @@
+#!/usr/bin/env python3
+"""
+EEG Preprocessing Tools - Advanced MNE-based Signal Processing
+
+Collection of sophisticated EEG preprocessing methods built on MNE-Python.
+Provides ICA, baseline correction, epoching, and advanced filtering beyond
+the basic real-time preprocessing pipeline.
+
+This module is intended for offline analysis and research workflows where
+computational cost is less critical than in real-time streaming.
+
+Features
+--------
+- Independent Component Analysis (ICA) for artifact removal
+- Baseline correction for event-related potentials
+- Epoch extraction for event-locked analysis
+- Advanced filtering (notch, highpass, lowpass)
+- Re-referencing (average, linked mastoids, REST)
+- MNE Raw object integration
+
+Class: EEGPreprocessingTools
+-----------------------------
+Main interface for applying preprocessing methods to MNE Raw objects.
+
+Key Methods:
+- apply_bandpass_filter(): Butterworth bandpass filtering
+- apply_car(): Common Average Reference
+- apply_ica(): Independent Component Analysis
+- apply_baseline_correction(): Remove DC offset
+- create_epochs(): Extract event-locked segments
+
+Usage Example
+-------------
+>>> from eeg_preprocessing_tools import EEGPreprocessingTools
+>>> tools = EEGPreprocessingTools()
+>>> 
+>>> # Load EEG data into MNE Raw object
+>>> raw = mne.io.read_raw_fif('data.fif', preload=True)
+>>> 
+>>> # Apply preprocessing chain
+>>> filtered = tools.apply_bandpass_filter(raw, 0.5, 45.0, 256.0)
+>>> referenced = tools.apply_car(filtered)
+>>> 
+>>> # ICA for artifact removal
+>>> ica = tools.apply_ica(referenced, n_components=15)
+>>> clean = tools.reconstruct_from_ica(referenced, ica, exclude=[0, 1])
+
+Integration with Pipeline
+-------------------------
+While the main preprocessing node (eeg_preprocessing.py) handles real-time
+filtering, this module provides additional tools for:
+- Offline batch processing
+- Research-grade preprocessing
+- Exploratory data analysis
+- Advanced artifact removal
+
+The basic real-time pipeline uses simplified versions of these algorithms
+for lower latency.
+
+Notes
+-----
+- Requires MNE-Python (pip install mne)
+- Designed for MNE Raw objects, not ROS messages
+- Higher computational cost than real-time preprocessing
+- Suitable for post-acquisition analysis
+
+See Also
+--------
+eeg_preprocessing.py : Real-time preprocessing node
+mne.preprocessing : MNE preprocessing module documentation
+"""
 import mne
 import numpy as np
 import logging

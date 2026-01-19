@@ -40,10 +40,10 @@ For detailed usage and configuration options, see [`launch/STARTUP_COMMANDS.md`]
 
 ### Components
 
-**1. Data Acquisition** (`nodes/data_acquisition/` and `ros2_hc_drv/`)
-- **Simulator** - Synthetic EEG data for testing (`nodes/data_acquisition/eeg_simulator.py`)
-- **Neurosity** - Neurosity Crown headset via ROS2 package (`ros2_hc_drv/neurosity_driver/`)
-- **OpenBCI** - OpenBCI Cyton board via ROS2 package (`ros2_hc_drv/openbci_driver/`)
+**1. Data Acquisition** (`nodes/data_acquisition/`)
+- **Simulator** - Synthetic EEG data for testing (`eeg_simulator.py`)
+- **Neurosity** - Neurosity Crown headset via ROS2 package (`neurosity_driver/`)
+- **OpenBCI** - OpenBCI Cyton board via ROS2 package (`openbci_driver/`)
 
 **2. Preprocessing** (`nodes/preprocessing/`)
 - **EEG Preprocessor** - Bandpass filtering (0.5-45 Hz) and Common Average Reference (CAR)
@@ -95,7 +95,7 @@ The script automatically:
 
 **Neurosity Device:**
 ```bash
-cp ros2_hc_drv/neurosity_driver/.env.example ros2_hc_drv/neurosity_driver/.env
+cp nodes/data_acquisition/neurosity_driver/.env.example nodes/data_acquisition/neurosity_driver/.env
 # Edit with your credentials
 ```
 
@@ -208,11 +208,11 @@ Generates synthetic 4-channel EEG with realistic brain signals (alpha, beta, the
 Located in `nodes/data_acquisition/eeg_simulator.py`.
 
 ### Neurosity Crown
-WiFi connection via Neurosity SDK. Implemented as ROS2 package in `ros2_hc_drv/neurosity_driver/`.
+WiFi connection via Neurosity SDK. Implemented as ROS2 package in `nodes/data_acquisition/neurosity_driver/`.
 Requires `.env` credentials in the driver package directory.
 
 ### OpenBCI Cyton
-USB serial connection via ROS2 package in `ros2_hc_drv/openbci_driver/`.
+USB serial connection via ROS2 package in `nodes/data_acquisition/openbci_driver/`.
 Supports 8 or 16 channels (with Daisy board). Configured via ROS2 parameters.
 
 **Details:** See [`nodes/data_acquisition/README.md`](nodes/data_acquisition/README.md)

@@ -321,7 +321,7 @@ if [ "$RUN_NODE" -eq 1 ]; then
         LOG_FILE="$LOG_DIR/neurosity_driver.log"
         
         # Change to package directory so load_dotenv() can find .env file
-        PACKAGE_DIR="$PROJECT_ROOT/ros2_hc_drv/neurosity_driver"
+        PACKAGE_DIR="$PROJECT_ROOT/nodes/data_acquisition/neurosity_driver"
         
         cd "$PACKAGE_DIR" || { echo "ERROR: Could not cd to $PACKAGE_DIR"; exit 1; }
         
