@@ -11,7 +11,7 @@ This project demonstrates a complete EEG data processing pipeline using ROS2 and
 ## Quick Start
 
 ```bash
-cd ~/ros2_ws/src/-healthcare_msgs_demonstration
+cd ~/ros2_ws/src/-healthcare_demo
 
 # Start with simulator (no hardware needed)
 USE_ACQUISITION=0 ./launch/start.sh
@@ -79,8 +79,8 @@ For detailed usage and configuration options, see [`launch/STARTUP_COMMANDS.md`]
 
 ```bash
 cd ~/ros2_ws/src
-git clone <repository-url> -healthcare_msgs_demonstration
-cd -healthcare_msgs_demonstration
+git clone <repository-url> -healthcare_demo
+cd -healthcare_demo
 ./launch/start.sh
 ```
 

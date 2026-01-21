@@ -154,11 +154,31 @@ fi
 
 # 5) Install system dependencies via rosdep (idempotent)
 if command -v rosdep >/dev/null 2>&1; then
-    echo "Running rosdep to install system dependencies (may ask for sudo)..."
-    sudo rosdep update || true
-    rosdep install --from-paths src --ignore-src -r -y || true
+    echo "Running rosdep to install system dependencies..."
+    
+    # Initialize rosdep if not already done
+    if [ ! -d "/etc/ros/rosdep" ]; then
+        echo "Initializing rosdep..."
+        sudo rosdep init 2>/dev/null || true
+    fi
+    
+    # Update rosdep database (suppress verbose output)
+    rosdep update >/dev/null 2>&1 || true
+    
+    # Install dependencies (suppress errors from missing build artifacts)
+    rosdep install --from-paths src --ignore-src -r -y >/dev/null 2>&1 || true
+    echo "System dependencies checked"
 else
-    echo "rosdep not found — please install and run 'rosdep install --from-paths src --ignore-src -r -y' manually"
+    echo "WARNING: rosdep not found. Installing..."
+    sudo apt update >/dev/null 2>&1
+    sudo apt install -y python3-rosdep >/dev/null 2>&1
+    if command -v rosdep >/dev/null 2>&1; then
+        sudo rosdep init 2>/dev/null || true
+        rosdep update >/dev/null 2>&1 || true
+        echo "rosdep installed and initialized successfully"
+    else
+        echo "Failed to install rosdep. Please install manually: sudo apt install python3-rosdep"
+    fi
 fi
 
 # 6) Decide whether to build
@@ -176,10 +196,10 @@ else
 fi
 
 if [ "$BUILD_NEEDED" -eq 1 ]; then
-    echo "Building workspace (colcon build)..."
-    # prefer building the needed packages first, then fallback to full build
+    echo "Building workspace with all dependencies..."
+    # Build all packages up to and including the demonstration package
     if command -v colcon >/dev/null 2>&1; then
-        colcon build --packages-select healthcare_msgs neurosity_driver --symlink-install || {
+        colcon build --packages-up-to healthcare_demo --symlink-install || {
             echo "First attempt failed; trying full rebuild..."
             colcon build --symlink-install || { echo "colcon build failed twice. Aborting."; exit 1; }
         }
@@ -198,20 +218,6 @@ if [ -f "$WORKSPACE/install/setup.bash" ]; then
     source "$WORKSPACE/install/setup.bash"
     set -u
     echo "Sourced workspace overlay: $WORKSPACE/install/setup.bash"
-fi
-
-# Always build healthcare_msgs and source overlays before running nodes or rqt
-if [ -d "$WORKSPACE" ]; then
-    cd "$WORKSPACE"
-    echo "Building healthcare_msgs package..."
-    colcon build --packages-select healthcare_msgs || { echo "Failed to build healthcare_msgs"; exit 1; }
-    if [ -f "$WORKSPACE/install/setup.bash" ]; then
-        set +u
-        source "$WORKSPACE/install/setup.bash"
-        set -u
-        echo "Sourced workspace overlay: $WORKSPACE/install/setup.bash"
-    fi
-    cd - >/dev/null
 fi
 
 echo "--- Setup complete. Environment ready. ---"
@@ -339,23 +345,41 @@ if [ "$RUN_NODE" -eq 1 ]; then
     fi
     
 
-    # Start two EEGSaver nodes: one for raw, one for preprocessed
-    echo "Starting EEG JSON saver node for raw data..."
-    RAW_SAVER_LOG_FILE="$LOG_DIR/eeg_json_saver_raw.log"
-    RAW_SAVER_SCRIPT="$PROJECT_ROOT/nodes/saver/eeg_json_saver.py"
-    EEG_DATA_DIR="$PROJECT_ROOT/eeg_data"
-    nohup "$VENV_PATH/bin/python3" "$RAW_SAVER_SCRIPT" --ros-args -p topic:=/eeg/raw -p file_path:="$EEG_DATA_DIR/eeg_raw_data.jsonl" >> "$RAW_SAVER_LOG_FILE" 2>&1 &
-    RAW_SAVER_PID=$!
-    echo "eeg_json_saver (raw) started with PID $RAW_SAVER_PID. Logs: $RAW_SAVER_LOG_FILE"
-    echo "$RAW_SAVER_PID" > "$LOG_DIR/eeg_json_saver_raw.pid"
+    # Start saver nodes: either rosbag (MCAP format) or JSON format
+    if [ "${USE_ROSBAG:-0}" = "1" ]; then
+        echo "Starting EEG rosbag saver (MCAP format) for all topics..."
+        ROSBAG_SAVER_SCRIPT="$PROJECT_ROOT/nodes/saver/eeg_rosbag_saver.py"
+        ROSBAG_LOG_FILE="$LOG_DIR/eeg_rosbag_saver.log"
+        
+        # Source ROS2 and workspace for rosbag command
+        set +u
+        source "/opt/ros/$ROS_DISTRO/setup.bash"
+        source "$WORKSPACE/install/setup.bash"
+        set -u
+        
+        nohup "$VENV_PATH/bin/python3" "$ROSBAG_SAVER_SCRIPT" >> "$ROSBAG_LOG_FILE" 2>&1 &
+        ROSBAG_PID=$!
+        echo "eeg_rosbag_saver started with PID $ROSBAG_PID. Logs: $ROSBAG_LOG_FILE"
+        echo "$ROSBAG_PID" > "$LOG_DIR/eeg_rosbag_saver.pid"
+    else
+        # Start two EEG JSON Saver nodes: one for raw, one for preprocessed
+        echo "Starting EEG JSON saver node for raw data..."
+        RAW_SAVER_LOG_FILE="$LOG_DIR/eeg_json_saver_raw.log"
+        RAW_SAVER_SCRIPT="$PROJECT_ROOT/nodes/saver/eeg_json_saver.py"
+        EEG_DATA_DIR="$PROJECT_ROOT/eeg_data"
+        nohup "$VENV_PATH/bin/python3" "$RAW_SAVER_SCRIPT" --ros-args -p topic:=/eeg/raw -p file_path:="$EEG_DATA_DIR/eeg_raw_data.jsonl" >> "$RAW_SAVER_LOG_FILE" 2>&1 &
+        RAW_SAVER_PID=$!
+        echo "eeg_json_saver (raw) started with PID $RAW_SAVER_PID. Logs: $RAW_SAVER_LOG_FILE"
+        echo "$RAW_SAVER_PID" > "$LOG_DIR/eeg_json_saver_raw.pid"
 
-    echo "Starting EEG JSON saver node for preprocessed data..."
-    PREPROC_SAVER_LOG_FILE="$LOG_DIR/eeg_json_saver_preprocessed.log"
-    PREPROC_SAVER_SCRIPT="$PROJECT_ROOT/nodes/saver/eeg_json_saver.py"
-    nohup "$VENV_PATH/bin/python3" "$PREPROC_SAVER_SCRIPT" --ros-args -p topic:=/eeg/processed -p file_path:="$EEG_DATA_DIR/eeg_preprocessed_data.jsonl" >> "$PREPROC_SAVER_LOG_FILE" 2>&1 &
-    PREPROC_SAVER_PID=$!
-    echo "eeg_json_saver (preprocessed) started with PID $PREPROC_SAVER_PID. Logs: $PREPROC_SAVER_LOG_FILE"
-    echo "$PREPROC_SAVER_PID" > "$LOG_DIR/eeg_json_saver_preprocessed.pid"
+        echo "Starting EEG JSON saver node for preprocessed data..."
+        PREPROC_SAVER_LOG_FILE="$LOG_DIR/eeg_json_saver_preprocessed.log"
+        PREPROC_SAVER_SCRIPT="$PROJECT_ROOT/nodes/saver/eeg_json_saver.py"
+        nohup "$VENV_PATH/bin/python3" "$PREPROC_SAVER_SCRIPT" --ros-args -p topic:=/eeg/processed -p file_path:="$EEG_DATA_DIR/eeg_preprocessed_data.jsonl" >> "$PREPROC_SAVER_LOG_FILE" 2>&1 &
+        PREPROC_SAVER_PID=$!
+        echo "eeg_json_saver (preprocessed) started with PID $PREPROC_SAVER_PID. Logs: $PREPROC_SAVER_LOG_FILE"
+        echo "$PREPROC_SAVER_PID" > "$LOG_DIR/eeg_json_saver_preprocessed.pid"
+    fi
     
     # Start EEG Preprocessor node (optional)
     echo "Starting eeg_preprocessor node in the background..."
@@ -426,25 +450,58 @@ if [ "$RUN_NODE" -eq 1 ]; then
     # Show which saver node is running and its PID/log
     if [ "${USE_ROSBAG:-0}" = "1" ]; then
         echo "  - eeg_rosbag_saver (PID: $(cat $LOG_DIR/eeg_rosbag_saver.pid 2>/dev/null || echo '?'))"
-        echo "  - Saver:     tail -f $LOG_DIR/eeg_rosbag_saver.log"
+        echo "  - eeg_json_saver (raw) (PID: $(cat $LOG_DIR/eeg_json_saver_raw.pid 2>/dev/null || echo '?'))"
+        echo "  - eeg_json_saver (preprocessed) (PID: $(cat $LOG_DIR/eeg_json_saver_preprocessed.pid 2>/dev/null || echo '?'))"
+        echo "  - eeg_preprocessor (PID: $(cat $LOG_DIR/eeg_preprocessor.pid 2>/dev/null || echo '?'))"
+        echo ""
+        echo "Rosbag directory (MCAP format):"
+        echo "  $PROJECT_ROOT/eeg_data/rosbag_*/"
+        echo ""
+        echo "View recorded data:"
+        echo "  ros2 bag info \$(ls -dt $PROJECT_ROOT/eeg_data/rosbag_* | head -1)"
+        echo ""
+        echo "Logs:"
+        echo "  - Simulator:  tail -f $LOG_DIR/eeg_simulator.log"
+        echo "  - Rosbag:     tail -f $LOG_DIR/eeg_rosbag_saver.log"
+        echo "  - Preprocessor: tail -f $LOG_DIR/eeg_preprocessor.log"
     else
-        echo "  - eeg_json_saver (PID: $(cat $LOG_DIR/eeg_json_saver.pid 2>/dev/null || echo '?'))"
-        echo "  - Saver:     tail -f $LOG_DIR/eeg_json_saver.log"
+        echo "  - eeg_json_saver (raw) (PID: $(cat $LOG_DIR/eeg_json_saver_raw.pid 2>/dev/null || echo '?'))"
+        echo "  - eeg_json_saver (preprocessed) (PID: $(cat $LOG_DIR/eeg_json_saver_preprocessed.pid 2>/dev/null || echo '?'))"
+        echo "  - eeg_preprocessor (PID: $(cat $LOG_DIR/eeg_preprocessor.pid 2>/dev/null || echo '?'))"
+        echo ""
+        echo "EEG data files (JSONL format):"
+        echo "  - Raw:        $PROJECT_ROOT/eeg_data/eeg_raw_data.jsonl"
+        echo "  - Preprocessed: $PROJECT_ROOT/eeg_data/eeg_preprocessed_data.jsonl"
+        echo ""
+        echo "View stored data:"
+        echo "  head -1 $PROJECT_ROOT/eeg_data/eeg_raw_data.jsonl | python3 -m json.tool"
+        echo ""
+        echo "Logs:"
+        echo "  - Simulator:  tail -f $LOG_DIR/eeg_simulator.log"
+        echo "  - Raw Saver:  tail -f $LOG_DIR/eeg_json_saver_raw.log"
+        echo "  - Preprocessor: tail -f $LOG_DIR/eeg_preprocessor.log"
+        echo "  - Prep Saver: tail -f $LOG_DIR/eeg_json_saver_preprocessed.log"
     fi
-    echo ""
-    echo "EEG data file (JSONL format):"
-    echo "  $LOG_DIR/eeg_data.jsonl"
-    echo ""
-    echo "View stored data:"
-    echo "  head -1 $LOG_DIR/eeg_data.jsonl | python3 -m json.tool"
     echo ""
     echo "Stop all nodes:"
     if [ "$USE_ACQUISITION" -eq 0 ]; then
-        echo "  kill \\$(cat $LOG_DIR/eeg_simulator.pid) \\$(cat $LOG_DIR/eeg_json_saver_raw.pid) \\$(cat $LOG_DIR/eeg_preprocessor.pid) \\$(cat $LOG_DIR/eeg_json_saver_preprocessed.pid)"
+        if [ "${USE_ROSBAG:-0}" = "1" ]; then
+            echo "  kill \\$(cat $LOG_DIR/eeg_simulator.pid) \\$(cat $LOG_DIR/eeg_rosbag_saver.pid) \\$(cat $LOG_DIR/eeg_preprocessor.pid)"
+        else
+            echo "  kill \\$(cat $LOG_DIR/eeg_simulator.pid) \\$(cat $LOG_DIR/eeg_json_saver_raw.pid) \\$(cat $LOG_DIR/eeg_preprocessor.pid) \\$(cat $LOG_DIR/eeg_json_saver_preprocessed.pid)"
+        fi
     elif [ "$USE_ACQUISITION" -eq 1 ]; then
-        echo "  kill \\$(cat $LOG_DIR/openbci_driver.pid) \\$(cat $LOG_DIR/eeg_json_saver_raw.pid) \\$(cat $LOG_DIR/eeg_preprocessor.pid) \\$(cat $LOG_DIR/eeg_json_saver_preprocessed.pid)"
+        if [ "${USE_ROSBAG:-0}" = "1" ]; then
+            echo "  kill \\$(cat $LOG_DIR/openbci_driver.pid) \\$(cat $LOG_DIR/eeg_rosbag_saver.pid) \\$(cat $LOG_DIR/eeg_preprocessor.pid)"
+        else
+            echo "  kill \\$(cat $LOG_DIR/openbci_driver.pid) \\$(cat $LOG_DIR/eeg_json_saver_raw.pid) \\$(cat $LOG_DIR/eeg_preprocessor.pid) \\$(cat $LOG_DIR/eeg_json_saver_preprocessed.pid)"
+        fi
     elif [ "$USE_ACQUISITION" -eq 2 ]; then
-        echo "  kill \\$(cat $LOG_DIR/neurosity_driver.pid) \\$(cat $LOG_DIR/eeg_json_saver_raw.pid) \\$(cat $LOG_DIR/eeg_preprocessor.pid) \\$(cat $LOG_DIR/eeg_json_saver_preprocessed.pid)"
+        if [ "${USE_ROSBAG:-0}" = "1" ]; then
+            echo "  kill \\$(cat $LOG_DIR/neurosity_driver.pid) \\$(cat $LOG_DIR/eeg_rosbag_saver.pid) \\$(cat $LOG_DIR/eeg_preprocessor.pid)"
+        else
+            echo "  kill \\$(cat $LOG_DIR/neurosity_driver.pid) \\$(cat $LOG_DIR/eeg_json_saver_raw.pid) \\$(cat $LOG_DIR/eeg_preprocessor.pid) \\$(cat $LOG_DIR/eeg_json_saver_preprocessed.pid)"
+        fi
     fi
 else
     LOG_DIR="$PROJECT_ROOT/logs"
@@ -460,4 +517,4 @@ else
     echo "  SIMULATE=1 RUN_NODE=1 ./start.sh"
 fi
 #chmod +x /home/tjalf/ros2_ws/src/-healthcare_msgs-demonstration/start.sh && /home/tjalf/ros2_ws/src/-healthcare_msgs-demonstration/start.sh run
-#source /home/tjalf/ros2_ws/src/-healthcare_msgs_demonstration/start.sh
+#source /home/tjalf/ros2_ws/src/-healthcare_demo/start.sh

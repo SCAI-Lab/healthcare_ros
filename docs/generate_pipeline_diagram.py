@@ -311,6 +311,6 @@ legend = ax.legend(handles=legend_elements, loc='lower left', bbox_to_anchor=(0.
 legend.get_frame().set_linewidth(2)
 
 plt.tight_layout()
-plt.savefig('/home/tjalf/ros2_ws/src/-healthcare_msgs_demonstration/docs/pipeline_diagram.png', 
+plt.savefig('/home/tjalf/ros2_ws/src/-healthcare_demo/docs/pipeline_diagram.png', 
             dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
 print("✅ Enhanced pipeline diagram saved to: docs/pipeline_diagram.png")

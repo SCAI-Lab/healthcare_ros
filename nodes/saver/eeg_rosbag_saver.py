@@ -13,10 +13,16 @@ from rclpy.node import Node
 class RosbagSaverNode(Node):
     def __init__(self):
         super().__init__('eeg_rosbag_saver')
-        # Use relative path from package location
+        # Use eeg_data directory at project root to match JSON savers
         from pathlib import Path
-        pkg_dir = Path(__file__).parent.parent.resolve()
-        self.output_dir = str(pkg_dir / 'rosbag_data')
+        import datetime
+        # Go from nodes/saver/eeg_rosbag_saver.py -> project_root
+        project_root = Path(__file__).parent.parent.parent.resolve()
+        # Create timestamped directory in eeg_data folder
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        eeg_data_dir = project_root / 'eeg_data'
+        eeg_data_dir.mkdir(exist_ok=True)
+        self.output_dir = str(eeg_data_dir / f'rosbag_{timestamp}')
         # Record both EEG data and EEGInfo metadata topics
         self.topics = [
             '/eeg/raw',
@@ -34,7 +40,8 @@ class RosbagSaverNode(Node):
             '-o', self.output_dir,
             '--storage', 'mcap',
         ] + self.topics
-        self.rosbag_proc = subprocess.Popen(cmd)
+        # Inherit environment variables (including ROS2 setup) from parent process
+        self.rosbag_proc = subprocess.Popen(cmd, env=os.environ.copy())
 
     def destroy_node(self):
         if self.rosbag_proc:
@@ -49,11 +56,12 @@ def main(args=None):
     node = RosbagSaverNode()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, rclpy.executors.ExternalShutdownException):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 if __name__ == '__main__':
     main()

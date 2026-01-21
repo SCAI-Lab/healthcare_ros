@@ -300,11 +300,12 @@ def main(args=None):
     
     try:
         rclpy.spin(eeg_saver)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, rclpy.executors.ExternalShutdownException):
         eeg_saver.get_logger().info(f'Shutting down. Total messages saved: {eeg_saver.message_count}')
     finally:
         eeg_saver.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':

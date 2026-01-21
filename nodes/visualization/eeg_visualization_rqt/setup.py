@@ -14,8 +14,8 @@ setup(
     author_email='tjalf@example.com',
     maintainer='tjalf',
     maintainer_email='tjalf@example.com',
-    url='https://github.com/TCUL8/-healthcare_msgs_demonstration',
-    download_url='https://github.com/TCUL8/-healthcare_msgs_demonstration/releases',
+    url='https://github.com/TCUL8/-healthcare_demo',
+    download_url='https://github.com/TCUL8/-healthcare_demo/releases',
     keywords=['ROS2', 'rqt', 'EEG', 'visualization'],
     classifiers=[
         'Intended Audience :: Developers',

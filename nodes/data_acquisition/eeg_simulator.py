@@ -181,11 +181,12 @@ def main(args=None):
     
     try:
         rclpy.spin(simulator)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, rclpy.executors.ExternalShutdownException):
         simulator.get_logger().info(f'Shutting down. Published {simulator.message_count} messages')
     finally:
         simulator.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':

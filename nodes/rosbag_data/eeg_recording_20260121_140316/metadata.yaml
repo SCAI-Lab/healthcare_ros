@@ -1,0 +1,110 @@
+rosbag2_bagfile_information:
+  version: 9
+  storage_identifier: mcap
+  duration:
+    nanoseconds: 179276398765
+  starting_time:
+    nanoseconds_since_epoch: 1769000598387175458
+  message_count: 1413
+  topics_with_message_count:
+    - topic_metadata:
+        name: /eeg/processed_info
+        type: healthcare_msgs/msg/EEGInfo
+        serialization_format: cdr
+        offered_qos_profiles:
+          - history: unknown
+            depth: 0
+            reliability: reliable
+            durability: transient_local
+            deadline:
+              sec: 9223372036
+              nsec: 854775807
+            lifespan:
+              sec: 9223372036
+              nsec: 854775807
+            liveliness: automatic
+            liveliness_lease_duration:
+              sec: 9223372036
+              nsec: 854775807
+            avoid_ros_namespace_conventions: false
+        type_description_hash: RIHS01_041575e8f98eb673f2a326416fe4d5fa2550fa29ac4d2bdb286f2e145bb1d256
+      message_count: 1
+    - topic_metadata:
+        name: /eeg/processed
+        type: healthcare_msgs/msg/EEG
+        serialization_format: cdr
+        offered_qos_profiles:
+          - history: unknown
+            depth: 0
+            reliability: reliable
+            durability: volatile
+            deadline:
+              sec: 9223372036
+              nsec: 854775807
+            lifespan:
+              sec: 9223372036
+              nsec: 854775807
+            liveliness: automatic
+            liveliness_lease_duration:
+              sec: 9223372036
+              nsec: 854775807
+            avoid_ros_namespace_conventions: false
+        type_description_hash: RIHS01_ce3cc86b13f5d2a3eb7ac61373ad713ad55886390bc5d92e8312cbca14889f9b
+      message_count: 696
+    - topic_metadata:
+        name: /eeg/raw_info
+        type: healthcare_msgs/msg/EEGInfo
+        serialization_format: cdr
+        offered_qos_profiles:
+          - history: unknown
+            depth: 0
+            reliability: reliable
+            durability: transient_local
+            deadline:
+              sec: 9223372036
+              nsec: 854775807
+            lifespan:
+              sec: 9223372036
+              nsec: 854775807
+            liveliness: automatic
+            liveliness_lease_duration:
+              sec: 9223372036
+              nsec: 854775807
+            avoid_ros_namespace_conventions: false
+        type_description_hash: RIHS01_041575e8f98eb673f2a326416fe4d5fa2550fa29ac4d2bdb286f2e145bb1d256
+      message_count: 1
+    - topic_metadata:
+        name: /eeg/raw
+        type: healthcare_msgs/msg/EEG
+        serialization_format: cdr
+        offered_qos_profiles:
+          - history: unknown
+            depth: 0
+            reliability: reliable
+            durability: volatile
+            deadline:
+              sec: 9223372036
+              nsec: 854775807
+            lifespan:
+              sec: 9223372036
+              nsec: 854775807
+            liveliness: automatic
+            liveliness_lease_duration:
+              sec: 9223372036
+              nsec: 854775807
+            avoid_ros_namespace_conventions: false
+        type_description_hash: RIHS01_ce3cc86b13f5d2a3eb7ac61373ad713ad55886390bc5d92e8312cbca14889f9b
+      message_count: 715
+  compression_format: ""
+  compression_mode: ""
+  relative_file_paths:
+    - eeg_recording_20260121_140316_0.mcap
+  files:
+    - path: eeg_recording_20260121_140316_0.mcap
+      starting_time:
+        nanoseconds_since_epoch: 1769000598387175458
+      duration:
+        nanoseconds: 179276398765
+      message_count: 1413
+  custom_data: ~
+  ros_distro: jazzy

@@ -26,6 +26,7 @@ Control script behavior with these variables:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `USE_ACQUISITION` | `0` | Data source: `0`=simulator, `1`=OpenBCI, `2`=Neurosity |
+| `USE_ROSBAG` | `0` | Storage format: `0`=JSON (dual savers), `1`=MCAP rosbag (all topics) |
 | `OPENBCI_PORT` | `/dev/ttyUSB0` | Serial port for OpenBCI device |
 | `OPENBCI_CHANNELS` | `8` | Number of OpenBCI channels (8 or 16 with daisy) |
 | `RUN_NODE` | `1` | Set to `0` to only setup environment without starting nodes |
@@ -86,6 +87,12 @@ NO_BUILD=1 USE_ACQUISITION=0 ./launch/start.sh
 ```bash
 USE_ACQUISITION=0 VISUALIZATION_MODE=comparison ./launch/start.sh
 ```
+
+### Use rosbag (MCAP format) instead of JSON
+```bash
+USE_ACQUISITION=0 USE_ROSBAG=1 ./launch/start.sh
+```
+*Records all topics to MCAP format in `nodes/rosbag_data/`. View with `ros2 bag info nodes/rosbag_data/`*
 
 ### Launch rqt for live visualization
 ```bash

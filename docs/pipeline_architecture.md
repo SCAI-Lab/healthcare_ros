@@ -127,7 +127,7 @@ signal_mode: uint8                  # SIGNAL_MODE_SURFACE = 0
 ## File Organization
 
 ```
--healthcare_msgs_demonstration/
+-healthcare_demo/
 ├── eeg_data/              # Data files only
 │   ├── eeg_raw_data.jsonl
 │   ├── eeg_raw_data.info.json
