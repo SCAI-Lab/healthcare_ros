@@ -67,7 +67,7 @@ for dev in eeg_devices:
         f"Additional Information: {dev['meta']}"
     )
     ax.text(dev['x'], 17.7, content, 
-            fontsize=23, ha='center', va='center', color='#424242', linespacing=1.5)
+            fontsize=21, ha='center', va='center', color='#424242', linespacing=1.4)
 
 # Central arrow from devices to raw topic (main data flow - thicker solid)
 arrow = FancyArrowPatch((16, 16.3), (16, 15.7),
@@ -104,14 +104,14 @@ json_raw = FancyBboxPatch((0.8, 13.2), 4.5, 2.5,
                          facecolor=COLOR_STORAGE, edgecolor='#388E3C', linewidth=3.5, alpha=0.95)
 ax.add_patch(json_raw)
 
-ax.text(3.05, 15.0, 'JSON Saver (Raw)', fontsize=28, fontweight='bold', ha='center', color='#1B5E20')
+ax.text(3.05, 14.8, 'JSON Saver (Raw)', fontsize=26, fontweight='bold', ha='center', color='#1B5E20')
 
 json_raw_content = (
     "Node Type: Subscriber Node\n\n"
     "Description: Saves raw EEG to JSONL files\n\n"
     "Additional Information: Line-delimited JSON"
 )
-ax.text(3.05, 14.2, json_raw_content, fontsize=21, ha='center', va='center', color='#1B5E20', linespacing=1.5)
+ax.text(3.05, 14.0, json_raw_content, fontsize=19, ha='center', va='center', color='#1B5E20', linespacing=1.4)
 
 # Arrow to Rosbag saver (storage - thicker solid)
 arrow = FancyArrowPatch((25.0, 14.5), (26.5, 14.5),
@@ -124,14 +124,14 @@ rosbag_raw = FancyBboxPatch((26.7, 13.2), 4.5, 2.5,
                            facecolor=COLOR_STORAGE, edgecolor='#388E3C', linewidth=3.5, alpha=0.95)
 ax.add_patch(rosbag_raw)
 
-ax.text(28.95, 15.0, 'Rosbag Saver (Raw)', fontsize=28, fontweight='bold', ha='center', color='#1B5E20')
+ax.text(28.95, 14.8, 'Rosbag Saver (Raw)', fontsize=26, fontweight='bold', ha='center', color='#1B5E20')
 
 rosbag_raw_content = (
     "Node Type: Subscriber Node\n\n"
     "Description: Saves raw EEG to MCAP format\n\n"
     "Additional Information: ROS2 native format"
 )
-ax.text(28.95, 14.2, rosbag_raw_content, fontsize=21, ha='center', va='center', color='#1B5E20', linespacing=1.5)
+ax.text(28.95, 14.0, rosbag_raw_content, fontsize=19, ha='center', va='center', color='#1B5E20', linespacing=1.4)
 
 # ========== PREPROCESSING LAYER - LARGER ==========
 # Arrow from raw topics to preprocessing (main data flow - thicker solid)
@@ -162,17 +162,17 @@ preproc_content = (
     "Description: Filters and references EEG signals\n\n"
     "Additional Information: Butterworth, Order 4"
 )
-ax.text(15.5, 8.7, preproc_content, fontsize=23, ha='center', va='center', color='#424242', linespacing=1.5)
+ax.text(15.5, 8.7, preproc_content, fontsize=21, ha='center', va='center', color='#424242', linespacing=1.4)
 
 # Helper tools module - WIDER
 tools_box = FancyBboxPatch((23.5, 8.0), 6.0, 2.5,
                           boxstyle="round,pad=0.2",
                           facecolor=COLOR_TOOLS, edgecolor='#1976D2', linewidth=3.5, linestyle='--', alpha=0.9)
 ax.add_patch(tools_box)
-ax.text(26.5, 9.8, 'Preprocessing Tools', fontsize=28, fontweight='bold', ha='center', color='#0D47A1')
-ax.text(26.5, 9.35, 'Module (MNE-based)', fontsize=21, ha='center', style='italic', color='#1565C0')
-ax.text(26.5, 8.6, '• ICA • Baseline Correction\n• Epoch Extraction\n• Advanced Filtering', 
-        fontsize=19, ha='center', color='#0D47A1', linespacing=1.5)
+ax.text(26.5, 9.7, 'Preprocessing Tools', fontsize=26, fontweight='bold', ha='center', color='#0D47A1')
+ax.text(26.5, 9.25, 'Module (MNE-based)', fontsize=19, ha='center', style='italic', color='#1565C0')
+ax.text(26.5, 8.55, '• ICA • Baseline Correction\n• Epoch Extraction\n• Advanced Filtering', 
+        fontsize=17, ha='center', color='#0D47A1', linespacing=1.4)
 
 # Arrow to optional tools (optional - dashed thicker)
 arrow = FancyArrowPatch((20.0, 9.0), (23.5, 9.0),
@@ -214,14 +214,14 @@ json_proc = FancyBboxPatch((0.8, 4.5), 4.5, 2.5,
                           facecolor=COLOR_STORAGE, edgecolor='#388E3C', linewidth=3.5, alpha=0.95)
 ax.add_patch(json_proc)
 
-ax.text(3.05, 6.3, 'JSON Saver (Processed)', fontsize=28, fontweight='bold', ha='center', color='#1B5E20')
+ax.text(3.05, 6.1, 'JSON Saver (Processed)', fontsize=26, fontweight='bold', ha='center', color='#1B5E20')
 
 json_proc_content = (
     "Node Type: Subscriber Node\n\n"
     "Description: Saves filtered EEG to JSONL\n\n"
     "Additional Information: Line-delimited JSON"
 )
-ax.text(3.05, 5.5, json_proc_content, fontsize=21, ha='center', va='center', color='#1B5E20', linespacing=1.5)
+ax.text(3.05, 5.3, json_proc_content, fontsize=19, ha='center', va='center', color='#1B5E20', linespacing=1.4)
 
 # Arrow to Rosbag processed saver (storage - thicker solid)
 arrow = FancyArrowPatch((25.0, 5.7), (26.5, 5.7),
@@ -234,14 +234,14 @@ rosbag_proc = FancyBboxPatch((26.7, 4.5), 4.5, 2.5,
                             facecolor=COLOR_STORAGE, edgecolor='#388E3C', linewidth=3.5, alpha=0.95)
 ax.add_patch(rosbag_proc)
 
-ax.text(28.95, 6.3, 'Rosbag Saver (Processed)', fontsize=28, fontweight='bold', ha='center', color='#1B5E20')
+ax.text(28.95, 6.1, 'Rosbag Saver (Processed)', fontsize=26, fontweight='bold', ha='center', color='#1B5E20')
 
 rosbag_proc_content = (
     "Node Type: Subscriber Node\n\n"
     "Description: Saves filtered EEG to MCAP\n\n"
     "Additional Information: ROS2 native format"
 )
-ax.text(28.95, 5.5, rosbag_proc_content, fontsize=21, ha='center', va='center', color='#1B5E20', linespacing=1.5)
+ax.text(28.95, 5.3, rosbag_proc_content, fontsize=19, ha='center', va='center', color='#1B5E20', linespacing=1.4)
 
 # ========== VISUALIZATION & ANALYZING LAYER - LARGER ==========
 viz_bg = FancyBboxPatch((0.7, -0.5), 30.6, 3.3,
@@ -279,7 +279,7 @@ for tool in viz_tools:
         f"Additional Information: {tool['meta']}"
     )
     ax.text(tool['x'], 1.0, content, 
-            fontsize=23, ha='center', va='center', color='#4A148C', linespacing=1.5)
+            fontsize=21, ha='center', va='center', color='#4A148C', linespacing=1.4)
 
 # Central arrow from processed topics to visualization layer (analysis - thicker solid)
 arrow = FancyArrowPatch((16, 3.4), (16, 2.8),
