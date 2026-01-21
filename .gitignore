@@ -232,3 +232,4 @@ config/*.yml
 # Editor / environment
 .vscode/
 .pytest_cache/
+*.mcap
