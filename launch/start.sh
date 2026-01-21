@@ -46,11 +46,11 @@ fi
 if [ "${1:-}" = "rqt" ]; then
     echo "Cleaning Snap and VSCode environment variables for rqt..."
     if [ "$VISUALIZATION_MODE" = "comparison" ]; then
-        echo "Starting offline EEG comparison plotting script..."
+        echo "Starting offline EEG plotting script..."
         # Get script directory and navigate to project root
         SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
         PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-        python3 "$PROJECT_ROOT/nodes/visualization/plot_eeg_comparison.py" &
+        python3 "$PROJECT_ROOT/nodes/visualization/plot_eeg_offline.py" &
     fi
     # Unset all known Snap and VSCode variables
     unset LD_LIBRARY_PATH
@@ -287,6 +287,7 @@ RUN_NODE="${RUN_NODE:-1}"
 USE_ACQUISITION="${USE_ACQUISITION:-0}"  # 0=simulator, 1=OpenBCI, 2=Neurosity
 OPENBCI_PORT="${OPENBCI_PORT:-/dev/ttyUSB0}"  # OpenBCI serial port
 OPENBCI_CHANNELS="${OPENBCI_CHANNELS:-8}"  # OpenBCI channel count (8 or 16)
+USE_ROSBAG="${USE_ROSBAG:-0}"  # 1=use rosbag (MCAP), 0=use JSON files
 
 if [ "$RUN_NODE" -eq 1 ]; then
     LOG_DIR="$PROJECT_ROOT/logs"
@@ -401,8 +402,8 @@ fi
 VISUALIZATION_MODE="${VISUALIZATION_MODE:-none}"
 
 if [ "$VISUALIZATION_MODE" = "comparison" ]; then
-    echo "Starting offline EEG comparison plotting script..."
-    python3 nodes/visualization/plot_eeg_comparison.py &
+    echo "Starting offline EEG plotting script..."
+    python3 "$PROJECT_ROOT/nodes/visualization/plot_eeg_offline.py" &
 elif [ "$VISUALIZATION_MODE" = "rqt" ]; then
     echo "Starting rqt EEG visualization plugin..."
     export RQT_PLUGIN_PATH="$PROJECT_ROOT/nodes/visualization/eeg_visualization_rqt"
@@ -450,8 +451,6 @@ if [ "$RUN_NODE" -eq 1 ]; then
     # Show which saver node is running and its PID/log
     if [ "${USE_ROSBAG:-0}" = "1" ]; then
         echo "  - eeg_rosbag_saver (PID: $(cat $LOG_DIR/eeg_rosbag_saver.pid 2>/dev/null || echo '?'))"
-        echo "  - eeg_json_saver (raw) (PID: $(cat $LOG_DIR/eeg_json_saver_raw.pid 2>/dev/null || echo '?'))"
-        echo "  - eeg_json_saver (preprocessed) (PID: $(cat $LOG_DIR/eeg_json_saver_preprocessed.pid 2>/dev/null || echo '?'))"
         echo "  - eeg_preprocessor (PID: $(cat $LOG_DIR/eeg_preprocessor.pid 2>/dev/null || echo '?'))"
         echo ""
         echo "Rosbag directory (MCAP format):"
