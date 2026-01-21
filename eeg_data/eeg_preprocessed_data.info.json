@@ -1,6 +1,6 @@
 {
   "device_info": {
-    "session_id": "preprocessed"
+    "session_id": "sim_session_001"
   },
   "channel_size": 4,
   "units": 1,
@@ -9,8 +9,23 @@
     4
   ],
   "montage_type": 2,
-  "electrode_sites": [],
-  "electrode_physical_type": [],
-  "placement_method": [],
+  "electrode_sites": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "electrode_physical_type": [
+    3,
+    3,
+    3,
+    3
+  ],
+  "placement_method": [
+    1,
+    1,
+    1,
+    1
+  ],
   "signal_mode": 1
 }
