@@ -2,7 +2,7 @@
 """
 Generate pipeline architecture diagram as PNG using matplotlib.
 Shows complete EEG processing pipeline with all active components.
-Enhanced layout with better visual hierarchy and spacing.
+Enhanced layout with much larger fonts and wider boxes for improved readability.
 """
 
 import matplotlib.pyplot as plt
@@ -10,10 +10,10 @@ import matplotlib.patches as mpatches
 from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
 import matplotlib.lines as mlines
 
-# Set up figure with optimal dimensions
-fig, ax = plt.subplots(figsize=(24, 18))
-ax.set_xlim(0, 24)
-ax.set_ylim(0, 18)
+# Set up figure with larger dimensions for better readability
+fig, ax = plt.subplots(figsize=(32, 26))
+ax.set_xlim(0, 32)
+ax.set_ylim(-2, 22)
 ax.axis('off')
 
 # Professional color palette
@@ -26,291 +26,270 @@ COLOR_ARROW = '#263238'        # Blue Grey 900
 COLOR_TOOLS = '#E1F5FE'        # Light Blue 50
 COLOR_TEST = '#FFF3E0'         # Orange 50
 
-# Title with enhanced typography
-ax.text(12, 17.5, 'Healthcare EEG Processing Pipeline', 
-        fontsize=34, fontweight='bold', ha='center', family='sans-serif')
-ax.text(12, 16.85, 'Real-Time Multi-Device Acquisition → Preprocessing → Dual Storage → Visualization',
-        fontsize=13, ha='center', style='italic', color='#546E7A')
-
 # ========== DATA ACQUISITION LAYER ==========
-acquisition_bg = FancyBboxPatch((0.5, 12.8), 23, 3.0, 
-                               boxstyle="round,pad=0.15", 
+acquisition_bg = FancyBboxPatch((0.7, 16.5), 30.6, 3.5, 
+                               boxstyle="round,pad=0.2", 
                                facecolor=COLOR_ACQUISITION, 
-                               edgecolor='#3F51B5', linewidth=3, alpha=0.95)
+                               edgecolor='#3F51B5', linewidth=4, alpha=0.95)
 ax.add_patch(acquisition_bg)
 
-ax.text(12, 15.5, 'DATA ACQUISITION LAYER', 
-        fontsize=18, fontweight='bold', ha='center', color='#1A237E')
+ax.text(16, 19.8, 'DATA ACQUISITION LAYER', 
+        fontsize=46, fontweight='bold', ha='center', color='#1A237E')
 
-# Active EEG devices (simulator, neurosity, openbci)
+# Active EEG devices (simulator, neurosity, openbci) - WIDER BOXES
 eeg_devices = [
-    {'x': 5.5, 'name': 'EEG Simulator', 'type': 'Publisher Node',
+    {'x': 7.0, 'name': 'EEG Simulator', 'type': 'Publisher Node',
      'desc': 'Creates synthetic EEG data', 'msgs': 'EEGRaw, EEGInfo',
      'meta': '4 channels, 256 Hz'},
-    {'x': 12, 'name': 'Neurosity Crown', 'type': 'Publisher Node',
+    {'x': 16, 'name': 'Neurosity Crown', 'type': 'Publisher Node',
      'desc': 'Acquires real EEG via WiFi', 'msgs': 'EEGRaw, EEGInfo',
      'meta': '8 channels, 256 Hz'},
-    {'x': 18.5, 'name': 'OpenBCI Cyton', 'type': 'Publisher Node',
+    {'x': 25, 'name': 'OpenBCI Cyton', 'type': 'Publisher Node',
      'desc': 'Acquires EEG via USB serial', 'msgs': 'EEGRaw, EEGInfo',
      'meta': '8-16 channels, 250 Hz'},
 ]
 
-# Draw active EEG device boxes
+# Draw active EEG device boxes - MUCH WIDER
 for dev in eeg_devices:
-    box = FancyBboxPatch((dev['x']-1.5, 13.5), 3.0, 1.6,
-                        boxstyle="round,pad=0.15",
-                        facecolor='white', edgecolor='#5C6BC0', linewidth=3, alpha=0.98)
+    box = FancyBboxPatch((dev['x']-4.5, 16.8), 9.0, 2.625,
+                        boxstyle="round,pad=0.2",
+                        facecolor='white', edgecolor='#5C6BC0', linewidth=4, alpha=0.98)
     ax.add_patch(box)
     
-    # Headline (bold)
-    ax.text(dev['x'], 14.85, dev['name'], 
-            fontsize=9, fontweight='bold', ha='center', va='center', color='#1A237E')
+    # Headline (bold) - MUCH LARGER FONT
+    ax.text(dev['x'], 18.7, dev['name'], 
+            fontsize=35, fontweight='bold', ha='center', va='center', color='#1A237E')
     
-    # Content with double line breaks and labels
+    # Content with double line breaks and labels - MUCH LARGER FONT
     content = (
         f"Node Type: {dev['type']}\n\n"
         f"Description: {dev['desc']}\n\n"
         f"Additional Information: {dev['meta']}"
     )
-    ax.text(dev['x'], 14.15, content, 
-            fontsize=6.5, ha='center', va='center', color='#424242', linespacing=1.4)
+    ax.text(dev['x'], 17.7, content, 
+            fontsize=23, ha='center', va='center', color='#424242', linespacing=1.5)
 
-# Central arrow from devices to raw topic (main data flow - thick solid)
-arrow = FancyArrowPatch((12, 12.8), (12, 11.85),
-                      arrowstyle='->', mutation_scale=30, 
-                      color=COLOR_ARROW, linewidth=4.5, alpha=0.9, zorder=10)
+# Central arrow from devices to raw topic (main data flow - thicker solid)
+arrow = FancyArrowPatch((16, 16.3), (16, 15.7),
+                      arrowstyle='->', mutation_scale=40, 
+                      color=COLOR_ARROW, linewidth=6, alpha=0.9, zorder=10)
 ax.add_patch(arrow)
 
-# ========== RAW TOPICS ==========
-raw_topic = FancyBboxPatch((7.5, 11.0), 9, 0.85,
-                          boxstyle="round,pad=0.12",
-                          facecolor=COLOR_TOPIC, edgecolor='#C62828', linewidth=3, alpha=0.95)
+# ========== RAW TOPICS - WIDER ==========
+raw_topic = FancyBboxPatch((7.0, 14.3), 18, 1.8,
+                          boxstyle="round,pad=0.15",
+                          facecolor=COLOR_TOPIC, edgecolor='#C62828', linewidth=4, alpha=0.95)
 ax.add_patch(raw_topic)
-ax.text(12, 11.65, '/eeg/raw', fontsize=15, fontweight='bold', ha='center', color='#B71C1C')
-ax.text(12, 11.25, 'header • session_id • sample_size • eeg[] • quality[]', 
-        fontsize=8.5, ha='center', color='#424242', family='monospace')
+ax.text(16, 15.5, '/eeg/raw', fontsize=42, fontweight='bold', ha='center', color='#B71C1C')
+ax.text(16, 14.9, 'header • session_id • sample_size • eeg[] • quality[]', 
+        fontsize=21, ha='center', color='#424242', family='monospace')
 
-raw_info_topic = FancyBboxPatch((7.5, 9.9), 9, 0.85,
-                               boxstyle="round,pad=0.12",
-                               facecolor=COLOR_TOPIC, edgecolor='#C62828', linewidth=3, alpha=0.95)
+raw_info_topic = FancyBboxPatch((7.0, 12.5), 18, 1.8,
+                               boxstyle="round,pad=0.15",
+                               facecolor=COLOR_TOPIC, edgecolor='#C62828', linewidth=4, alpha=0.95)
 ax.add_patch(raw_info_topic)
-ax.text(12, 10.55, '/eeg/raw_info', fontsize=15, fontweight='bold', ha='center', color='#B71C1C')
-ax.text(12, 10.15, 'device_info • electrodes • montage | QoS: Latched (transient_local)', 
-        fontsize=8.5, ha='center', color='#424242', family='monospace')
+ax.text(16, 13.7, '/eeg/raw_info', fontsize=42, fontweight='bold', ha='center', color='#B71C1C')
+ax.text(16, 13.15, 'device_info • electrodes • montage | QoS: Latched (transient_local)', 
+        fontsize=21, ha='center', color='#424242', family='monospace')
 
-# ========== STORAGE LAYER (RAW) ==========
-# Arrow to JSON saver (storage - medium solid)
-arrow = FancyArrowPatch((7.5, 10.95), (4.85, 10.95),
-                       arrowstyle='->', mutation_scale=22, 
-                       color=COLOR_ARROW, linewidth=2.5, alpha=0.9, zorder=10)
+# ========== STORAGE LAYER (RAW) - WIDER BOXES ==========
+# Arrow to JSON saver (storage - thicker solid)
+arrow = FancyArrowPatch((7.0, 14.5), (5.5, 14.5),
+                       arrowstyle='->', mutation_scale=30, 
+                       color=COLOR_ARROW, linewidth=3.5, alpha=0.9, zorder=10)
 ax.add_patch(arrow)
 
-json_raw = FancyBboxPatch((1.85, 10.15), 3.0, 1.6,
-                         boxstyle="round,pad=0.15",
-                         facecolor=COLOR_STORAGE, edgecolor='#388E3C', linewidth=2.5, alpha=0.95)
+json_raw = FancyBboxPatch((0.8, 13.2), 4.5, 2.5,
+                         boxstyle="round,pad=0.2",
+                         facecolor=COLOR_STORAGE, edgecolor='#388E3C', linewidth=3.5, alpha=0.95)
 ax.add_patch(json_raw)
 
-ax.text(3.35, 11.5, 'JSON Saver (Raw)', fontsize=9, fontweight='bold', ha='center', color='#1B5E20')
+ax.text(3.05, 15.0, 'JSON Saver (Raw)', fontsize=28, fontweight='bold', ha='center', color='#1B5E20')
 
 json_raw_content = (
     "Node Type: Subscriber Node\n\n"
     "Description: Saves raw EEG to JSONL files\n\n"
     "Additional Information: Line-delimited JSON"
 )
-ax.text(3.35, 10.8, json_raw_content, fontsize=6.5, ha='center', va='center', color='#1B5E20', linespacing=1.4)
+ax.text(3.05, 14.2, json_raw_content, fontsize=21, ha='center', va='center', color='#1B5E20', linespacing=1.5)
 
-# Arrow to Rosbag saver (storage - medium solid)
-arrow = FancyArrowPatch((16.5, 10.95), (19.15, 10.95),
-                       arrowstyle='->', mutation_scale=22, 
-                       color=COLOR_ARROW, linewidth=2.5, alpha=0.9, zorder=10)
+# Arrow to Rosbag saver (storage - thicker solid)
+arrow = FancyArrowPatch((25.0, 14.5), (26.5, 14.5),
+                       arrowstyle='->', mutation_scale=30, 
+                       color=COLOR_ARROW, linewidth=3.5, alpha=0.9, zorder=10)
 ax.add_patch(arrow)
 
-rosbag_raw = FancyBboxPatch((19.15, 10.15), 3.0, 1.6,
-                           boxstyle="round,pad=0.15",
-                           facecolor=COLOR_STORAGE, edgecolor='#388E3C', linewidth=2.5, alpha=0.95)
+rosbag_raw = FancyBboxPatch((26.7, 13.2), 4.5, 2.5,
+                           boxstyle="round,pad=0.2",
+                           facecolor=COLOR_STORAGE, edgecolor='#388E3C', linewidth=3.5, alpha=0.95)
 ax.add_patch(rosbag_raw)
 
-ax.text(20.65, 11.5, 'Rosbag Saver (Raw)', fontsize=9, fontweight='bold', ha='center', color='#1B5E20')
+ax.text(28.95, 15.0, 'Rosbag Saver (Raw)', fontsize=28, fontweight='bold', ha='center', color='#1B5E20')
 
 rosbag_raw_content = (
     "Node Type: Subscriber Node\n\n"
     "Description: Saves raw EEG to MCAP format\n\n"
     "Additional Information: ROS2 native format"
 )
-ax.text(20.65, 10.8, rosbag_raw_content, fontsize=6.5, ha='center', va='center', color='#1B5E20', linespacing=1.4)
+ax.text(28.95, 14.2, rosbag_raw_content, fontsize=21, ha='center', va='center', color='#1B5E20', linespacing=1.5)
 
-# ========== PREPROCESSING LAYER ==========
-# Arrow from raw topics to preprocessing (main data flow - thick solid)
-arrow = FancyArrowPatch((12, 9.9), (12, 9.0),
-                       arrowstyle='->', mutation_scale=30, 
-                       color=COLOR_ARROW, linewidth=4.5, alpha=0.9, zorder=10)
+# ========== PREPROCESSING LAYER - LARGER ==========
+# Arrow from raw topics to preprocessing (main data flow - thicker solid)
+arrow = FancyArrowPatch((16, 12.0), (16, 11.1),
+                       arrowstyle='->', mutation_scale=40, 
+                       color=COLOR_ARROW, linewidth=6, alpha=0.9, zorder=10)
 ax.add_patch(arrow)
 
-preproc_bg = FancyBboxPatch((0.5, 6.0), 23, 3.0,
-                           boxstyle="round,pad=0.15",
+preproc_bg = FancyBboxPatch((0.7, 7.5), 30.6, 3.3,
+                           boxstyle="round,pad=0.2",
                            facecolor=COLOR_PREPROC, 
-                           edgecolor='#EF6C00', linewidth=3, alpha=0.95)
+                           edgecolor='#EF6C00', linewidth=4, alpha=0.95)
 ax.add_patch(preproc_bg)
 
-ax.text(12, 8.7, 'PREPROCESSING LAYER', 
-        fontsize=18, fontweight='bold', ha='center', color='#E65100')
+ax.text(16, 10.6, 'PREPROCESSING LAYER', 
+        fontsize=46, fontweight='bold', ha='center', color='#E65100')
 
-# Main preprocessor
-preprocessor = FancyBboxPatch((10.5, 6.7), 3.0, 1.6,
-                             boxstyle="round,pad=0.15",
-                             facecolor='white', edgecolor='#F57C00', linewidth=3, alpha=0.98)
+# Main preprocessor - WIDER
+preprocessor = FancyBboxPatch((11.0, 7.9), 9.0, 2.5,
+                             boxstyle="round,pad=0.2",
+                             facecolor='white', edgecolor='#F57C00', linewidth=4, alpha=0.98)
 ax.add_patch(preprocessor)
 
-ax.text(12, 8.05, 'EEG Preprocessor Node', fontsize=9, fontweight='bold', ha='center', color='#E65100')
+ax.text(15.5, 9.7, 'EEG Preprocessor Node', fontsize=35, fontweight='bold', ha='center', color='#E65100')
 
 preproc_content = (
     "Node Type: Subscriber & Publisher\n\n"
     "Description: Filters and references EEG signals\n\n"
     "Additional Information: Butterworth, Order 4"
 )
-ax.text(12, 7.35, preproc_content, fontsize=6.5, ha='center', va='center', color='#424242', linespacing=1.4)
+ax.text(15.5, 8.7, preproc_content, fontsize=23, ha='center', va='center', color='#424242', linespacing=1.5)
 
-# Helper tools module
-tools_box = FancyBboxPatch((17.5, 6.6), 4.0, 1.7,
-                          boxstyle="round,pad=0.15",
-                          facecolor=COLOR_TOOLS, edgecolor='#1976D2', linewidth=2.5, linestyle='--', alpha=0.9)
+# Helper tools module - WIDER
+tools_box = FancyBboxPatch((23.5, 8.0), 6.0, 2.5,
+                          boxstyle="round,pad=0.2",
+                          facecolor=COLOR_TOOLS, edgecolor='#1976D2', linewidth=3.5, linestyle='--', alpha=0.9)
 ax.add_patch(tools_box)
-ax.text(19.5, 8.1, 'Preprocessing Tools', fontsize=11, fontweight='bold', ha='center', color='#0D47A1')
-ax.text(19.5, 7.75, 'Module (MNE-based)', fontsize=9, ha='center', style='italic', color='#1565C0')
-ax.text(19.5, 7.15, '• ICA • Baseline Correction\n• Epoch Extraction\n• Advanced Filtering', 
-        fontsize=7.5, ha='center', color='#0D47A1', linespacing=1.5)
+ax.text(26.5, 9.8, 'Preprocessing Tools', fontsize=28, fontweight='bold', ha='center', color='#0D47A1')
+ax.text(26.5, 9.35, 'Module (MNE-based)', fontsize=21, ha='center', style='italic', color='#1565C0')
+ax.text(26.5, 8.6, '• ICA • Baseline Correction\n• Epoch Extraction\n• Advanced Filtering', 
+        fontsize=19, ha='center', color='#0D47A1', linespacing=1.5)
 
-# Arrow to optional tools (optional - dashed thin)
-arrow = FancyArrowPatch((13.5, 7.4), (17.5, 7.4),
-                       arrowstyle='->', mutation_scale=18, 
-                       color=COLOR_ARROW, linewidth=1.8, linestyle='--', alpha=0.7, zorder=10)
+# Arrow to optional tools (optional - dashed thicker)
+arrow = FancyArrowPatch((20.0, 9.0), (23.5, 9.0),
+                       arrowstyle='->', mutation_scale=25, 
+                       color=COLOR_ARROW, linewidth=2.5, linestyle='--', alpha=0.7, zorder=10)
 ax.add_patch(arrow)
 
-# Arrow from preprocessing to processed topics (main data flow - thick solid)
-arrow = FancyArrowPatch((12, 6.0), (12, 5.1),
-                       arrowstyle='->', mutation_scale=30, 
-                       color=COLOR_ARROW, linewidth=4.5, alpha=0.9, zorder=10)
+# Arrow from preprocessing to processed topics (main data flow - thicker solid)
+arrow = FancyArrowPatch((16, 7.5), (16, 6.8),
+                       arrowstyle='->', mutation_scale=40, 
+                       color=COLOR_ARROW, linewidth=6, alpha=0.9, zorder=10)
 ax.add_patch(arrow)
 
 # ========== PROCESSED TOPICS ==========
-proc_topic = FancyBboxPatch((7.5, 4.25), 9, 0.85,
-                           boxstyle="round,pad=0.12",
-                           facecolor=COLOR_TOPIC, edgecolor='#C62828', linewidth=3, alpha=0.95)
+proc_topic = FancyBboxPatch((7.0, 5.5), 18, 1.8,
+                           boxstyle="round,pad=0.15",
+                           facecolor=COLOR_TOPIC, edgecolor='#C62828', linewidth=4, alpha=0.95)
 ax.add_patch(proc_topic)
-ax.text(12, 4.9, '/eeg/processed', fontsize=15, fontweight='bold', ha='center', color='#B71C1C')
-ax.text(12, 4.5, 'Filtered & Referenced EEG data', fontsize=8.5, ha='center', color='#424242')
+ax.text(16, 6.6, '/eeg/processed', fontsize=42, fontweight='bold', ha='center', color='#B71C1C')
+ax.text(16, 6.1, 'Filtered & Referenced EEG data', fontsize=21, ha='center', color='#424242')
 
-proc_info_topic = FancyBboxPatch((7.5, 3.15), 9, 0.85,
-                                boxstyle="round,pad=0.12",
-                                facecolor=COLOR_TOPIC, edgecolor='#C62828', linewidth=3, alpha=0.95)
+proc_info_topic = FancyBboxPatch((7.0, 3.8), 18, 1.8,
+                                boxstyle="round,pad=0.15",
+                                facecolor=COLOR_TOPIC, edgecolor='#C62828', linewidth=4, alpha=0.95)
 ax.add_patch(proc_info_topic)
-ax.text(12, 3.8, '/eeg/processed_info', fontsize=15, fontweight='bold', ha='center', color='#B71C1C')
-ax.text(12, 3.4, 'Metadata + preprocessing_methods[BANDPASS, CAR]', 
-        fontsize=8.5, ha='center', color='#424242', family='monospace')
+ax.text(16, 4.9, '/eeg/processed_info', fontsize=42, fontweight='bold', ha='center', color='#B71C1C')
+ax.text(16, 4.4, 'Metadata + preprocessing_methods[BANDPASS, CAR]', 
+        fontsize=21, ha='center', color='#424242', family='monospace')
 
-# ========== STORAGE LAYER (PROCESSED) ==========
-# Arrow to JSON processed saver (storage - medium solid)
-arrow = FancyArrowPatch((7.5, 4.1), (4.85, 4.1),
-                       arrowstyle='->', mutation_scale=22, 
-                       color=COLOR_ARROW, linewidth=2.5, alpha=0.9, zorder=10)
+# ========== STORAGE LAYER (PROCESSED) - WIDER ==========
+# Arrow to JSON processed saver (storage - thicker solid)
+arrow = FancyArrowPatch((7.0, 5.7), (5.5, 5.7),
+                       arrowstyle='->', mutation_scale=30, 
+                       color=COLOR_ARROW, linewidth=3.5, alpha=0.9, zorder=10)
 ax.add_patch(arrow)
 
-json_proc = FancyBboxPatch((1.85, 3.3), 3.0, 1.6,
-                          boxstyle="round,pad=0.15",
-                          facecolor=COLOR_STORAGE, edgecolor='#388E3C', linewidth=2.5, alpha=0.95)
+json_proc = FancyBboxPatch((0.8, 4.5), 4.5, 2.5,
+                          boxstyle="round,pad=0.2",
+                          facecolor=COLOR_STORAGE, edgecolor='#388E3C', linewidth=3.5, alpha=0.95)
 ax.add_patch(json_proc)
 
-ax.text(3.35, 4.65, 'JSON Saver (Processed)', fontsize=9, fontweight='bold', ha='center', color='#1B5E20')
+ax.text(3.05, 6.3, 'JSON Saver (Processed)', fontsize=28, fontweight='bold', ha='center', color='#1B5E20')
 
 json_proc_content = (
     "Node Type: Subscriber Node\n\n"
     "Description: Saves filtered EEG to JSONL\n\n"
     "Additional Information: Line-delimited JSON"
 )
-ax.text(3.35, 3.95, json_proc_content, fontsize=6.5, ha='center', va='center', color='#1B5E20', linespacing=1.4)
+ax.text(3.05, 5.5, json_proc_content, fontsize=21, ha='center', va='center', color='#1B5E20', linespacing=1.5)
 
-# Arrow to Rosbag processed saver (storage - medium solid)
-arrow = FancyArrowPatch((16.5, 4.1), (19.15, 4.1),
-                       arrowstyle='->', mutation_scale=22, 
-                       color=COLOR_ARROW, linewidth=2.5, alpha=0.9, zorder=10)
+# Arrow to Rosbag processed saver (storage - thicker solid)
+arrow = FancyArrowPatch((25.0, 5.7), (26.5, 5.7),
+                       arrowstyle='->', mutation_scale=30, 
+                       color=COLOR_ARROW, linewidth=3.5, alpha=0.9, zorder=10)
 ax.add_patch(arrow)
 
-rosbag_proc = FancyBboxPatch((19.15, 3.3), 3.0, 1.6,
-                            boxstyle="round,pad=0.15",
-                            facecolor=COLOR_STORAGE, edgecolor='#388E3C', linewidth=2.5, alpha=0.95)
+rosbag_proc = FancyBboxPatch((26.7, 4.5), 4.5, 2.5,
+                            boxstyle="round,pad=0.2",
+                            facecolor=COLOR_STORAGE, edgecolor='#388E3C', linewidth=3.5, alpha=0.95)
 ax.add_patch(rosbag_proc)
 
-ax.text(20.65, 4.65, 'Rosbag Saver (Processed)', fontsize=9, fontweight='bold', ha='center', color='#1B5E20')
+ax.text(28.95, 6.3, 'Rosbag Saver (Processed)', fontsize=28, fontweight='bold', ha='center', color='#1B5E20')
 
 rosbag_proc_content = (
     "Node Type: Subscriber Node\n\n"
     "Description: Saves filtered EEG to MCAP\n\n"
     "Additional Information: ROS2 native format"
 )
-ax.text(20.65, 3.95, rosbag_proc_content, fontsize=6.5, ha='center', va='center', color='#1B5E20', linespacing=1.4)
+ax.text(28.95, 5.5, rosbag_proc_content, fontsize=21, ha='center', va='center', color='#1B5E20', linespacing=1.5)
 
-# ========== VISUALIZATION & ANALYZING LAYER ==========
-viz_bg = FancyBboxPatch((0.5, -0.8), 23, 3.0,
-                       boxstyle="round,pad=0.15",
+# ========== VISUALIZATION & ANALYZING LAYER - LARGER ==========
+viz_bg = FancyBboxPatch((0.7, -0.5), 30.6, 3.3,
+                       boxstyle="round,pad=0.2",
                        facecolor=COLOR_VIZ, 
-                       edgecolor='#7B1FA2', linewidth=3, alpha=0.95)
+                       edgecolor='#7B1FA2', linewidth=4, alpha=0.95)
 ax.add_patch(viz_bg)
 
-ax.text(12, 1.9, 'VISUALIZATION & ANALYZING LAYER', 
-        fontsize=18, fontweight='bold', ha='center', color='#4A148C')
+ax.text(16, 2.6, 'VISUALIZATION & ANALYZING LAYER', 
+        fontsize=46, fontweight='bold', ha='center', color='#4A148C')
 
-# Visualization tools (plot comparison, rqt live view)
+# Visualization tools (plot comparison, rqt live view) - WIDER
 viz_tools = [
-    {'x': 9.0, 'name': 'Plot Comparison', 'type': 'Subscriber Node',
+    {'x': 11.5, 'name': 'Plot Comparison', 'type': 'Subscriber Node',
      'desc': 'Compares raw vs filtered EEG', 'meta': 'PNG images, 2s windows'},
-    {'x': 15.0, 'name': 'RQT Live View', 'type': 'Subscriber Plugin',
+    {'x': 20.5, 'name': 'RQT Live View', 'type': 'Subscriber Plugin',
      'desc': 'Real-time EEG visualization', 'meta': 'Qt5 GUI framework'},
 ]
 
-# Draw visualization tool boxes
+# Draw visualization tool boxes - WIDER
 for tool in viz_tools:
-    box = FancyBboxPatch((tool['x']-1.5, -0.1), 3.0, 1.6,
-                        boxstyle="round,pad=0.15",
-                        facecolor='white', edgecolor='#7B1FA2', linewidth=2.5, alpha=0.98)
+    box = FancyBboxPatch((tool['x']-4.5, 0.2), 9.0, 2.5,
+                        boxstyle="round,pad=0.2",
+                        facecolor='white', edgecolor='#AB47BC', linewidth=4, alpha=0.98)
     ax.add_patch(box)
     
-    # Headline (bold)
-    ax.text(tool['x'], 1.25, tool['name'], 
-            fontsize=9, fontweight='bold', ha='center', va='center', color='#4A148C')
+    # Headline (bold) - MUCH LARGER
+    ax.text(tool['x'], 2.0, tool['name'], 
+            fontsize=35, fontweight='bold', ha='center', va='center', color='#4A148C')
     
-    # Content with double line breaks and labels
+    # Content with double line breaks and labels - MUCH LARGER
     content = (
         f"Node Type: {tool['type']}\n\n"
         f"Description: {tool['desc']}\n\n"
         f"Additional Information: {tool['meta']}"
     )
-    ax.text(tool['x'], 0.55, content, 
-            fontsize=6.5, ha='center', va='center', color='#4A148C', linespacing=1.4)
+    ax.text(tool['x'], 1.0, content, 
+            fontsize=23, ha='center', va='center', color='#4A148C', linespacing=1.5)
 
-# Central arrow from processed topics to visualization layer (analysis - thin solid)
-arrow = FancyArrowPatch((12, 3.15), (12, 2.2),
-                       arrowstyle='->', mutation_scale=20, 
-                       color=COLOR_ARROW, linewidth=4.5, alpha=0.9, zorder=10)
+# Central arrow from processed topics to visualization layer (analysis - thicker solid)
+arrow = FancyArrowPatch((16, 3.4), (16, 2.8),
+                       arrowstyle='->', mutation_scale=30, 
+                       color=COLOR_ARROW, linewidth=6, alpha=0.9, zorder=10)
 ax.add_patch(arrow)
 
-# ========== LEGEND ==========
-legend_elements = [
-    mpatches.Patch(facecolor=COLOR_ACQUISITION, edgecolor='#3F51B5', label='Data Acquisition', linewidth=2.5),
-    mpatches.Patch(facecolor=COLOR_PREPROC, edgecolor='#EF6C00', label='Preprocessing', linewidth=2.5),
-    mpatches.Patch(facecolor=COLOR_STORAGE, edgecolor='#388E3C', label='Storage', linewidth=2.5),
-    mpatches.Patch(facecolor=COLOR_VIZ, edgecolor='#7B1FA2', label='Visualization', linewidth=2.5),
-    mpatches.Patch(facecolor=COLOR_TOPIC, edgecolor='#C62828', label='ROS2 Topics', linewidth=2.5),
-    mlines.Line2D([], [], color=COLOR_ARROW, linewidth=4.5, label='Main Data Flow'),
-    mlines.Line2D([], [], color=COLOR_ARROW, linewidth=2.5, label='Storage'),
-    mlines.Line2D([], [], color=COLOR_ARROW, linestyle='--', linewidth=1.8, label='Used Tools'),
-]
-
-legend = ax.legend(handles=legend_elements, loc='lower left', bbox_to_anchor=(0.02, 0.01), 
-                  fontsize=9, framealpha=0.98, title='Component Types', title_fontsize=10,
-                  edgecolor='#424242', fancybox=True, shadow=True, ncol=3)
-legend.get_frame().set_linewidth(2)
+# Legend removed for cleaner layout - layer headers and color-coding provide sufficient context
 
 plt.tight_layout()
-plt.savefig('/home/tjalf/ros2_ws/src/-healthcare_demo/docs/pipeline_diagram.png', 
+plt.savefig('/home/tjalf/ros2_ws/src/healthcare_demo/docs/pipeline_diagram.png', 
             dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
-print("✅ Enhanced pipeline diagram saved to: docs/pipeline_diagram.png")
+print("✅ Enhanced pipeline diagram with improved readability saved to: docs/pipeline_diagram.png")

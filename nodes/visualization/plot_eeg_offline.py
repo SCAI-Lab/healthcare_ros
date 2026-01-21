@@ -151,23 +151,36 @@ def plot_selected_channels(times, raw_eeg, preprocessed_eeg, channel_names, chan
     Plot raw and preprocessed EEG data for selected channels.
     If save_path is provided, saves the figure instead of showing it.
     """
-    plt.figure(figsize=(15, 8))
+    # Increase figure size for better visibility
+    plt.figure(figsize=(20, 10))
+    
+    # Set larger font sizes globally for this figure
+    plt.rcParams.update({
+        'font.size': 14,
+        'axes.titlesize': 16,
+        'axes.labelsize': 14,
+        'xtick.labelsize': 12,
+        'ytick.labelsize': 12,
+        'legend.fontsize': 13
+    })
+    
     for idx, ch in enumerate(channels_to_plot):
         plt.subplot(len(channels_to_plot), 1, idx+1)
-        plt.plot(times, raw_eeg[idx], label=f'Raw {channel_names[ch]}', alpha=0.7)
-        plt.plot(times, preprocessed_eeg[idx], label=f'Preprocessed {channel_names[ch]}', alpha=0.7)
-        plt.title(f'Channel {channel_names[ch]} (Sampling Rate: 256 Hz)')
-        plt.xlabel('Time (s)')
-        plt.ylabel('EEG Value (uV)')
-        plt.legend()
+        plt.plot(times, raw_eeg[idx], label=f'Raw {channel_names[ch]}', alpha=0.7, linewidth=1.5)
+        plt.plot(times, preprocessed_eeg[idx], label=f'Preprocessed {channel_names[ch]}', alpha=0.7, linewidth=1.5)
+        plt.title(f'Channel {channel_names[ch]} (Sampling Rate: 256 Hz)', fontweight='bold')
+        plt.xlabel('Time (s)', fontweight='bold')
+        plt.ylabel('EEG Value (uV)', fontweight='bold')
+        plt.legend(loc='upper right')
+        plt.grid(True, alpha=0.3)
     
     if data_source:
-        plt.suptitle(f'EEG Data Comparison - {data_source}', fontsize=14, y=0.995)
+        plt.suptitle(f'EEG Data Comparison - {data_source}', fontsize=18, fontweight='bold', y=0.998)
     
     plt.tight_layout()
     
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        plt.savefig(save_path, dpi=200, bbox_inches='tight')
         print(f"Plot saved to: {save_path}")
         plt.close()
     else:
