@@ -29,12 +29,14 @@ def plot_selected_channels(times, raw_eeg, preprocessed_eeg, channel_names, chan
     plt.figure(figsize=(15, 8))
     for idx, ch in enumerate(channels_to_plot):
         plt.subplot(len(channels_to_plot), 1, idx+1)
-        plt.plot(times, raw_eeg[idx], label=f'Raw {channel_names[ch]}', alpha=0.7)
-        plt.plot(times, preprocessed_eeg[idx], label=f'Preprocessed {channel_names[ch]}', alpha=0.7)
-        plt.title(f'Channel {channel_names[ch]} (Sampling Rate: 256 Hz)')
-        plt.xlabel('Time (s)')
-        plt.ylabel('EEG Value (uV)')
-        plt.legend()
+        plt.plot(times, raw_eeg[idx], label=f'Raw {channel_names[ch]}', alpha=0.7, linewidth=2)
+        plt.plot(times, preprocessed_eeg[idx], label=f'Preprocessed {channel_names[ch]}', alpha=0.7, linewidth=2)
+        plt.title(f'Channel {channel_names[ch]} (Sampling Rate: 256 Hz)', fontsize=18, fontweight='bold')
+        plt.xlabel('Time (s)', fontsize=16, fontweight='bold')
+        plt.ylabel('EEG Value (uV)', fontsize=16, fontweight='bold')
+        plt.legend(fontsize=14, loc='best')
+        plt.tick_params(axis='both', which='major', labelsize=14)
+        plt.grid(True, alpha=0.3)
     plt.tight_layout()
     
     if save_path:
