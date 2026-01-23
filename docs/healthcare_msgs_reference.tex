@@ -281,18 +281,6 @@ session\_id & string & eeg\_simulator & ``sim\_session\_001'' \\
 \end{longtable}
 
 \textit{Note: The DeviceInfo message definition includes additional fields (device manufacturer, serial number, specifications, etc.), but these are not populated by the current implementation.}
-\subsection{Message Definition}
-The \texttt{DeviceInfo} message contains device identity and session information. In the current implementation, only the \texttt{session\_id} field is actively used.
-
-\begin{longtable}{|>{\small}p{4cm}|>{\small}p{2.5cm}|>{\small}p{6.5cm}|}
-\hline
-\textbf{Field Name} & \textbf{Type} & \textbf{Description} \\
-\hline
-session\_id & string & Unique session identifier (used in implementation) \\
-\hline
-\end{longtable}
-
-\textit{Note: The DeviceInfo message definition includes additional fields for device specifications, environmental requirements, and measurement parameters, but these are not populated by the current implementation.}
 
 \section{Topics and Data Flow}
 
