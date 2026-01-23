@@ -1,0 +1,383 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{hyperref}
+
+\title{Healthcare\_msgs Message Definitions Reference\\ROS2 EEG Pipeline}
+\author{Healthcare Demo Project}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Overview}
+This document provides a comprehensive reference of all \texttt{healthcare\_msgs} message definitions used in the ROS2 EEG data acquisition and preprocessing pipeline. The tables document message fields, data types, enumeration constants, and actual values published by each node in the system.
+
+\section{Message Type: EEG}
+\subsection{Message Definition}
+The \texttt{EEG} message contains raw or preprocessed EEG data with quality metrics.
+
+\begin{longtable}{|>{\small}p{3cm}|>{\small}p{2.5cm}|>{\small}p{8cm}|}
+\hline
+\textbf{Field Name} & \textbf{Type} & \textbf{Description} \\
+\hline
+\endfirsthead
+
+\multicolumn{3}{c}%
+{\tablename\ \thetable\ -- \textit{Continued from previous page}} \\
+\hline
+\textbf{Field Name} & \textbf{Type} & \textbf{Description} \\
+\hline
+\endhead
+
+\hline \multicolumn{3}{r}{\textit{Continued on next page}} \\
+\endfoot
+
+\hline
+\endlastfoot
+
+header & std\_msgs/Header & Standard ROS2 header with timestamp and frame\_id \\
+session\_id & string & Unique session identifier matching DeviceInfo \\
+sample\_size & uint16 & Number of samples per channel in this message \\
+eeg & float32[] & Flattened EEG values: length = channel\_count × sample\_count. Access sample s of channel c as: eeg[c × sample\_count + s] \\
+quality & float32[] & Per-channel quality scores from 0 (poor) to 1 (excellent) \\
+\hline
+\end{longtable}
+
+\subsection{Values Published by Nodes}
+
+\subsubsection{EEG Simulator Node (\texttt{eeg\_simulator.py})}
+\begin{longtable}{|>{\small}p{3cm}|>{\small}p{9.5cm}|}
+\hline
+\textbf{Field} & \textbf{Published Values} \\
+\hline
+header.frame\_id & ``neurosity\_simulator'' \\
+session\_id & ``sim\_session\_001'' \\
+sample\_size & 64 (samples per message) \\
+eeg & 256 float values (4 channels × 64 samples). Simulated brain signals with alpha (10 Hz), beta (20 Hz), theta (6 Hz) waves, plus realistic noise: white noise, drift, 50 Hz powerline, muscle artifacts, eye blinks \\
+quality & 4 float values (one per channel), range 0.5-0.95, varying sinusoidally \\
+\hline
+\caption{EEG message values from simulator node (publishes to \texttt{/eeg/raw})}
+\end{longtable}
+
+\subsubsection{EEG Preprocessor Node (\texttt{eeg\_preprocessing.py})}
+\begin{longtable}{|>{\small}p{3cm}|>{\small}p{9.5cm}|}
+\hline
+\textbf{Field} & \textbf{Published Values} \\
+\hline
+header & Copied from input message (preserves timestamp and frame\_id) \\
+session\_id & Copied from input message \\
+sample\_size & May differ from input if downsampling applied (default: unchanged) \\
+eeg & Preprocessed values after: (1) Common Average Reference (CAR), (2) Butterworth bandpass filter 0.5-45 Hz, (3) optional downsampling, (4) rounded to 3 decimal places \\
+quality & Copied from input message with rounding to 2 decimal places \\
+\hline
+\caption{EEG message values from preprocessor node (publishes to \texttt{/eeg/processed})}
+\end{longtable}
+
+\section{Message Type: EEGInfo}
+\subsection{Message Definition}
+The \texttt{EEGInfo} message provides metadata about EEG acquisition and preprocessing configuration.
+
+\begin{longtable}{|>{\small}p{3.5cm}|>{\small}p{2.5cm}|>{\small}p{7.5cm}|}
+\hline
+\textbf{Field Name} & \textbf{Type} & \textbf{Description} \\
+\hline
+\endfirsthead
+
+\multicolumn{3}{c}%
+{\tablename\ \thetable\ -- \textit{Continued from previous page}} \\
+\hline
+\textbf{Field Name} & \textbf{Type} & \textbf{Description} \\
+\hline
+\endhead
+
+\hline \multicolumn{3}{r}{\textit{Continued on next page}} \\
+\endfoot
+
+\hline
+\endlastfoot
+
+device\_info.session\_id & string & Unique session identifier (from DeviceInfo) \\
+channel\_size & uint8 & Number of EEG channels \\
+units & uint8 & Measurement units (enum) \\
+selected\_preprocessing & uint8[] & List of preprocessing methods applied \\
+montage\_type & uint8 & Electrode arrangement type (enum) \\
+placement\_method & uint8[] & Electrode placement standard (enum) \\
+electrode\_sites & uint8[] & Electrode locations, one per channel (enum) \\
+electrode\_physical\_type & uint8[] & Physical electrode type (enum) \\
+signal\_mode & uint8 & Recording mode: surface/intracranial (enum) \\
+bipolar\_active\_sites & uint8[] & Active electrodes for bipolar montage (copied by preprocessor) \\
+bipolar\_reference\_sites & uint8[] & Reference electrodes for bipolar montage (copied by preprocessor) \\
+reference\_sites & uint8[] & Reference electrodes for referential montage (copied by preprocessor) \\
+\hline
+\end{longtable}
+
+\textit{Note: The simulator node populates device\_info.session\_id, channel\_size, units, selected\_preprocessing, montage\_type, electrode\_sites, electrode\_physical\_type, placement\_method, and signal\_mode. The preprocessor node copies all fields from the raw info (including bipolar/reference sites if present) and updates selected\_preprocessing.}
+
+\subsection{Enumeration Constants}
+
+\subsubsection{Units}
+\begin{longtable}{|>{\small}l|>{\small}l|>{\small}p{8cm}|}
+\hline
+\textbf{Constant} & \textbf{Value} & \textbf{Description} \\
+\hline
+UNIT\_UNKNOWN & 0 & Units not specified \\
+UNIT\_UV & 1 & Microvolts (µV) \\
+UNIT\_MV & 2 & Millivolts (mV) \\
+UNIT\_COUNTS & 3 & Raw ADC counts \\
+\hline
+\end{longtable}
+
+\subsubsection{Preprocessing Methods}
+\begin{longtable}{|>{\small}l|>{\small}l|>{\small}p{7cm}|}
+\hline
+\textbf{Constant} & \textbf{Value} & \textbf{Description} \\
+\hline
+EEG\_FEATURE\_UNKNOWN & 0 & Unknown preprocessing \\
+EEG\_PREPROC\_BANDPASS & 1 & Bandpass filter applied \\
+EEG\_PREPROC\_NOTCH & 2 & Notch filter (50/60 Hz powerline) \\
+EEG\_PREPROC\_ICA & 3 & Independent Component Analysis \\
+EEG\_PREPROC\_CAR & 4 & Common Average Reference \\
+EEG\_PREPROC\_ARTEFACT\_REJ & 5 & Artifact rejection/interpolation \\
+EEG\_PREPROC\_BASELINE\_CORR & 6 & Baseline correction \\
+EEG\_PREPROC\_DOWNSAMPLE & 7 & Downsampling applied \\
+EEG\_PREPROC\_SEGMENTED & 8 & Epoching/segmentation \\
+EEG\_FEATURE\_CUSTOM & 255 & Custom preprocessing \\
+\hline
+\end{longtable}
+
+\subsubsection{Montage Type}
+\begin{longtable}{|>{\small}l|>{\small}l|>{\small}p{7cm}|}
+\hline
+\textbf{Constant} & \textbf{Value} & \textbf{Description} \\
+\hline
+MONTAGE\_TYPE\_UNKNOWN & 0 & Montage type not specified \\
+MONTAGE\_TYPE\_BIPOLAR & 1 & Bipolar montage (differential) \\
+MONTAGE\_TYPE\_REFERENTIAL & 2 & Referential to single electrode \\
+MONTAGE\_TYPE\_AVERAGE\_REF & 3 & Average reference montage \\
+MONTAGE\_TYPE\_LAPLACIAN & 4 & Laplacian spatial filter \\
+\hline
+\end{longtable}
+
+\subsubsection{Placement Method}
+\begin{longtable}{|>{\small}l|>{\small}l|>{\small}p{7cm}|}
+\hline
+\textbf{Constant} & \textbf{Value} & \textbf{Description} \\
+\hline
+PLACEMENT\_METHOD\_UNKNOWN & 0 & Placement not specified \\
+PLACEMENT\_METHOD\_1020 & 1 & International 10-20 system \\
+PLACEMENT\_METHOD\_1010 & 2 & International 10-10 system \\
+PLACEMENT\_METHOD\_105 & 3 & International 10-5 system \\
+PLACEMENT\_METHOD\_CUSTOM & 255 & Custom placement \\
+\hline
+\end{longtable}
+
+\subsubsection{Electrode Sites}
+\begin{longtable}{|>{\small}l|>{\small}l|>{\small}l||>{\small}l|>{\small}l|>{\small}l|}
+\hline
+\textbf{Constant} & \textbf{Value} & \textbf{Location} & \textbf{Constant} & \textbf{Value} & \textbf{Location} \\
+\hline
+ELECTRODE\_UNKNOWN & 0 & Unknown & ELECTRODE\_T3 & 13 & T3 (temporal) \\
+ELECTRODE\_FP1 & 1 & Fp1 (frontal pole) & ELECTRODE\_T4 & 14 & T4 (temporal) \\
+ELECTRODE\_FP2 & 2 & Fp2 (frontal pole) & ELECTRODE\_T5 & 15 & T5 (temporal) \\
+ELECTRODE\_F3 & 3 & F3 (frontal) & ELECTRODE\_T6 & 16 & T6 (temporal) \\
+ELECTRODE\_F4 & 4 & F4 (frontal) & ELECTRODE\_FZ & 17 & Fz (midline frontal) \\
+ELECTRODE\_C3 & 5 & C3 (central) & ELECTRODE\_CZ & 18 & Cz (midline central) \\
+ELECTRODE\_C4 & 6 & C4 (central) & ELECTRODE\_PZ & 19 & Pz (midline parietal) \\
+ELECTRODE\_P3 & 7 & P3 (parietal) & ELECTRODE\_OZ & 20 & Oz (midline occipital) \\
+ELECTRODE\_P4 & 8 & P4 (parietal) & ELECTRODE\_CUSTOM & 255 & Custom location \\
+ELECTRODE\_O1 & 9 & O1 (occipital) &  &  &  \\
+ELECTRODE\_O2 & 10 & O2 (occipital) &  &  &  \\
+ELECTRODE\_F7 & 11 & F7 (frontal) &  &  &  \\
+ELECTRODE\_F8 & 12 & F8 (frontal) &  &  &  \\
+\hline
+\end{longtable}
+
+\subsubsection{Electrode Physical Type}
+\begin{longtable}{|>{\small}l|>{\small}l|>{\small}p{7cm}|}
+\hline
+\textbf{Constant} & \textbf{Value} & \textbf{Description} \\
+\hline
+ELECTRODE\_PHYSICAL\_UNKNOWN & 0 & Type not specified \\
+ELECTRODE\_PHYSICAL\_AGCL & 1 & Silver/Silver chloride (Ag/AgCl) \\
+ELECTRODE\_PHYSICAL\_GOLD\_CUP & 2 & Gold cup electrode \\
+ELECTRODE\_PHYSICAL\_DRY & 3 & Dry contact electrode \\
+ELECTRODE\_PHYSICAL\_WET & 4 & Wet contact electrode \\
+ELECTRODE\_PHYSICAL\_HYDROGEL & 5 & Hydrogel electrode \\
+ELECTRODE\_PHYSICAL\_MICRONEEDLE & 6 & Microneedle electrode \\
+ELECTRODE\_PHYSICAL\_CUSTOM & 255 & Custom type \\
+\hline
+\end{longtable}
+
+\subsubsection{Signal Mode}
+\begin{longtable}{|>{\small}l|>{\small}l|>{\small}p{7cm}|}
+\hline
+\textbf{Constant} & \textbf{Value} & \textbf{Description} \\
+\hline
+SIGNAL\_MODE\_UNKNOWN & 0 & Mode not specified \\
+SIGNAL\_MODE\_SURFACE & 1 & Surface/scalp recording (non-invasive) \\
+SIGNAL\_MODE\_INTRACRANIAL & 2 & Intracranial recording (invasive) \\
+SIGNAL\_MODE\_CUSTOM & 255 & Custom mode \\
+\hline
+\end{longtable}
+
+\subsection{Values Published by Nodes}
+
+\subsubsection{EEG Simulator Node (\texttt{eeg\_simulator.py})}
+\begin{longtable}{|>{\small}p{4cm}|>{\small}p{9cm}|}
+\hline
+\textbf{Field} & \textbf{Published Values} \\
+\hline
+device\_info.session\_id & ``sim\_session\_001'' \\
+channel\_size & 4 \\
+units & UNIT\_UV (1) - microvolts \\
+selected\_preprocessing & [EEG\_PREPROC\_BANDPASS (1), EEG\_PREPROC\_NOTCH (2)] \\
+montage\_type & MONTAGE\_TYPE\_REFERENTIAL (2) \\
+electrode\_sites & [ELECTRODE\_FP1 (1), ELECTRODE\_FP2 (2), ELECTRODE\_F3 (3), ELECTRODE\_F4 (4)] \\
+electrode\_physical\_type & [ELECTRODE\_PHYSICAL\_DRY (3)] × 4 channels \\
+placement\_method & [PLACEMENT\_METHOD\_1020 (1)] × 4 channels \\
+signal\_mode & SIGNAL\_MODE\_SURFACE (1) \\
+\hline
+\caption{EEGInfo values from simulator node (publishes to \texttt{/eeg/raw\_info})}
+\end{longtable}
+
+\subsubsection{EEG Preprocessor Node (\texttt{eeg\_preprocessing.py})}
+\begin{longtable}{|>{\small}p{4cm}|>{\small}p{9cm}|}
+\hline
+\textbf{Field} & \textbf{Published Values} \\
+\hline
+\multicolumn{2}{|l|}{\textbf{When raw\_info available (normal operation):}} \\
+device\_info & Copied from \texttt{/eeg/raw\_info} (includes session\_id: ``sim\_session\_001'') \\
+channel\_size & Copied from input (4 channels) \\
+units & Copied from input (UNIT\_UV) \\
+selected\_preprocessing & [EEG\_PREPROC\_BANDPASS (1), EEG\_PREPROC\_CAR (4)] - overrides input \\
+montage\_type & Copied from input (MONTAGE\_TYPE\_REFERENTIAL) \\
+electrode\_sites & Copied from input [FP1, FP2, F3, F4] \\
+electrode\_physical\_type & Copied from input [ELECTRODE\_PHYSICAL\_DRY] × 4 \\
+placement\_method & Copied from input [PLACEMENT\_METHOD\_1020] × 4 \\
+signal\_mode & Copied from input (SIGNAL\_MODE\_SURFACE) \\
+bipolar\_active\_sites & Copied from input (empty in current implementation) \\
+bipolar\_reference\_sites & Copied from input (empty in current implementation) \\
+reference\_sites & Copied from input (empty in current implementation) \\
+\section{Message Type: DeviceInfo}
+\subsection{Message Definition}
+The \texttt{DeviceInfo} message contains device identity and session information. In the current implementation, only the \texttt{session\_id} field is actively populated.
+
+\begin{longtable}{|>{\small}p{4cm}|>{\small}p{2.5cm}|>{\small}p{6.5cm}|}
+\hline
+\textbf{Field Name} & \textbf{Type} & \textbf{Description} \\
+\hline
+session\_id & string & Unique session identifier \\
+\hline
+\end{longtable}
+
+\subsection{Values Published by Nodes}
+
+\subsubsection{EEG Simulator Node}
+\begin{longtable}{|>{\small}p{4cm}|>{\small}p{9cm}|}
+\hline
+\textbf{Field} & \textbf{Published Values} \\
+\hline
+session\_id & ``sim\_session\_001'' \\
+\hline
+\caption{DeviceInfo.session\_id from simulator (accessed via EEGInfo.device\_info)}
+\end{longtable}
+
+\subsubsection{EEG Preprocessor Node}
+\begin{longtable}{|>{\small}p{4cm}|>{\small}p{9cm}|}
+\hline
+\textbf{Field} & \textbf{Published Values} \\
+\hline
+device\_info (entire object) & Copied from \texttt{/eeg/raw\_info} when available, or creates new with session\_id = ``preprocessed'' as fallback \\
+\hline
+\caption{DeviceInfo from preprocessor (accessed via EEGInfo.device\_info)}
+\end{longtable}
+
+\textit{Note: The DeviceInfo message definition includes additional fields for device specifications, environmental requirements, and measurement parameters, but these are not populated by the current implementation.}
+\subsection{Message Definition}
+The \texttt{DeviceInfo} message contains device identity and session information. In the current implementation, only the \texttt{session\_id} field is actively used.
+
+\begin{longtable}{|>{\small}p{4cm}|>{\small}p{2.5cm}|>{\small}p{6.5cm}|}
+\hline
+\textbf{Field Name} & \textbf{Type} & \textbf{Description} \\
+\hline
+session\_id & string & Unique session identifier (used in implementation) \\
+\hline
+\end{longtable}
+
+\textit{Note: The DeviceInfo message definition includes additional fields for device specifications, environmental requirements, and measurement parameters, but these are not populated by the current implementation.}
+
+\section{Topics and Data Flow}
+
+\subsection{Published Topics}
+\begin{longtable}{|>{\small}p{3.5cm}|>{\small}p{3cm}|>{\small}p{2cm}|>{\small}p{4cm}|}
+\hline
+\textbf{Topic} & \textbf{Message Type} & \textbf{QoS} & \textbf{Publisher Node} \\
+\hline
+/eeg/raw & EEG & Default & eeg\_simulator \\
+/eeg/raw\_info & EEGInfo & Latched & eeg\_simulator \\
+/eeg/processed & EEG & Default & eeg\_preprocessor \\
+/eeg/processed\_info & EEGInfo & Latched & eeg\_preprocessor \\
+\hline
+\end{longtable}
+
+\subsection{Data Pipeline}
+\begin{enumerate}
+    \item \textbf{Acquisition}: \texttt{eeg\_simulator} generates synthetic EEG data with realistic brain signals and artifacts, publishes to \texttt{/eeg/raw} and \texttt{/eeg/raw\_info}
+    \item \textbf{Storage (Raw)}: \texttt{eeg\_json\_saver} subscribes to \texttt{/eeg/raw}, saves to \texttt{eeg\_data/eeg\_raw\_data.jsonl}
+    \item \textbf{Preprocessing}: \texttt{eeg\_preprocessor} subscribes to \texttt{/eeg/raw}, applies CAR and bandpass filtering, publishes to \texttt{/eeg/processed}
+    \item \textbf{Storage (Processed)}: \texttt{eeg\_json\_saver} subscribes to \texttt{/eeg/processed}, saves to \texttt{eeg\_data/eeg\_preprocessed\_data.jsonl}
+\end{enumerate}
+
+\section{Parameter Summary}
+
+\subsection{EEG Simulator Parameters}
+\begin{longtable}{|>{\small}p{3.5cm}|>{\small}p{2.5cm}|>{\small}p{7cm}|}
+\hline
+\textbf{Parameter} & \textbf{Default} & \textbf{Description} \\
+\hline
+sampling\_rate & 256 Hz & Sample rate for signal generation \\
+num\_channels & 4 & Number of EEG channels \\
+samples\_per\_message & 64 & Samples per published message \\
+channel\_names & [FP1, FP2, F3, F4] & Electrode labels \\
+\hline
+\end{longtable}
+
+\subsection{EEG Preprocessor Parameters}
+\begin{longtable}{|>{\small}p{3.5cm}|>{\small}p{2.5cm}|>{\small}p{7cm}|}
+\hline
+\textbf{Parameter} & \textbf{Default} & \textbf{Description} \\
+\hline
+l\_freq & 0.5 Hz & Low frequency cutoff (high-pass) \\
+h\_freq & 45.0 Hz & High frequency cutoff (low-pass) \\
+sampling\_rate & 256.0 Hz & Expected sampling rate \\
+downsample\_factor & 1 & Downsampling factor (1 = no downsample) \\
+round\_precision & 3 & Decimal places for rounding \\
+publish\_topic & /eeg/processed & Output topic name \\
+buffer\_duration & 6.0 s & Buffer duration for filtering \\
+\hline
+\end{longtable}
+
+\subsection{EEG JSON Saver Parameters}
+\begin{longtable}{|>{\small}p{3.5cm}|>{\small}p{3cm}|>{\small}p{6.5cm}|}
+\hline
+\textbf{Parameter} & \textbf{Default} & \textbf{Description} \\
+\hline
+topic & /eeg/raw & Topic to subscribe to \\
+file\_path & eeg\_data/eeg\_raw\_data.jsonl & Output file path \\
+\hline
+\end{longtable}
+
+\section{References}
+\begin{itemize}
+    \item healthcare\_msgs package: \url{https://github.com/ros-medical/healthcare_msgs}
+    \item ROS2 Documentation: \url{https://docs.ros.org}
+    \item Project repository: healthcare\_ros (SCAI-Lab)
+\end{itemize}
+
+\end{document}
