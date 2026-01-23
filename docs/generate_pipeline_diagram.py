@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Generate pipeline architecture diagram as PNG using matplotlib.
+Generate pipeline architecture diagram as SVG using matplotlib.
 Shows complete EEG processing pipeline with all active components.
 Enhanced layout with much larger fonts and wider boxes for improved readability.
 """
@@ -290,6 +290,6 @@ ax.add_patch(arrow)
 # Legend removed for cleaner layout - layer headers and color-coding provide sufficient context
 
 plt.tight_layout()
-plt.savefig('/home/tjalf/ros2_ws/src/healthcare_demo/docs/pipeline_diagram.png', 
-            dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
-print("✅ Enhanced pipeline diagram with improved readability saved to: docs/pipeline_diagram.png")
+plt.savefig('/home/tjalf/ros2_ws/src/healthcare_demo/docs/pipeline_diagram.svg', 
+            format='svg', bbox_inches='tight', facecolor='white', edgecolor='none')
+print("✅ Enhanced pipeline diagram with improved readability saved to: docs/pipeline_diagram.svg")

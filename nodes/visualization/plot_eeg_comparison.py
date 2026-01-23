@@ -6,7 +6,7 @@ def get_next_plot_number(plots_dir):
         os.makedirs(plots_dir)
         return 1
     
-    existing_files = [f for f in os.listdir(plots_dir) if f.startswith('eeg_comparison_') and f.endswith('.png')]
+    existing_files = [f for f in os.listdir(plots_dir) if f.startswith('eeg_comparison_') and f.endswith('.svg')]
     if not existing_files:
         return 1
     
@@ -14,7 +14,7 @@ def get_next_plot_number(plots_dir):
     numbers = []
     for f in existing_files:
         try:
-            num = int(f.replace('eeg_comparison_', '').replace('.png', ''))
+            num = int(f.replace('eeg_comparison_', '').replace('.svg', ''))
             numbers.append(num)
         except ValueError:
             continue
@@ -38,7 +38,7 @@ def plot_selected_channels(times, raw_eeg, preprocessed_eeg, channel_names, chan
     plt.tight_layout()
     
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        plt.savefig(save_path, format='svg', bbox_inches='tight')
         print(f"Plot saved to: {save_path}")
         plt.close()
     else:
@@ -144,7 +144,7 @@ if __name__ == "__main__":
     
     # Get next plot number and save to plots/ directory
     plot_number = get_next_plot_number(PLOTS_DIR)
-    save_path = os.path.join(PLOTS_DIR, f'eeg_comparison_{plot_number:03d}.png')
+    save_path = os.path.join(PLOTS_DIR, f'eeg_comparison_{plot_number:03d}.svg')
     
     # Plot 2 seconds of data and save
     plot_raw_vs_preprocessed(RAW_DATA_PATH, PREPROCESSED_DATA_PATH, CHANNELS_TO_PLOT, 
