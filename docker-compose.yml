@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  influxdb:
+    image: influxdb:latest
+    container_name: influxdb
+    ports:
+      - "8086:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_ADMIN_USERNAME}
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_ADMIN_PASSWORD}
+      - DOCKER_INFLUXDB_INIT_ORG=${INFLUXDB_ORG}
+      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUXDB_BUCKET}
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_ADMIN_TOKEN}
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+      - influxdb-config:/etc/influxdb2
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: healthcare-nginx
+    ports:
+      - "8080:80"
+      - "8443:443"
+    volumes:
+      - ./docs/influxdb_realtime_dashboard.html:/usr/share/nginx/html/index.html:ro
+      - ./docs:/usr/share/nginx/html/docs:ro
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - influxdb
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+volumes:
+  influxdb-data:
+  influxdb-config:
+
+networks:
+  healthcare-network:
+    driver: bridge

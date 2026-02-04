@@ -1,12 +1,14 @@
 # InfluxDB Integration Guide
 
-This guide explains how to set up InfluxDB for real-time EEG data visualization via the Explorer UI web interface.
+> **✅ RECOMMENDED: Use Docker Compose (Automated Setup)**  
+> The project now includes a `docker-compose.yml` that automatically manages InfluxDB and Nginx.  
+> See [Quick Start](#quick-start-docker-compose) below.
 
 ## Overview
 
 The `eeg_influxdb_bridge.py` node subscribes to both raw and preprocessed EEG topics and writes data to InfluxDB in real-time. This enables:
 
-- **Web-based visualization** - View live EEG data in your browser
+- **Web-based visualization** - View live EEG data in your browser via Nginx webserver
 - **Time-series analysis** - Query and analyze historical EEG data
 - **Dual stream comparison** - Compare raw vs preprocessed data side-by-side
 - **Remote access** - View data from any device on the network
@@ -14,30 +16,62 @@ The `eeg_influxdb_bridge.py` node subscribes to both raw and preprocessed EEG to
 ## Architecture
 
 ```
-ROS2 Topics                    InfluxDB Bridge              InfluxDB
--------------                  ----------------              ---------
-/eeg/raw          ─────────>   eeg_influxdb_bridge   ───>   eeg_raw
-/eeg/raw_info     ─────────>         (Python)        ───>   eeg_raw_metadata
-/eeg/processed    ─────────>                         ───>   eeg_preprocessed
-/eeg/processed_info ───────>                         ───>   eeg_preprocessed_metadata
+ROS2 Topics                    InfluxDB Bridge              Docker Services
+-------------                  ----------------              ----------------
+/eeg/raw          ─────────>   eeg_influxdb_bridge   ───>   InfluxDB:8086
+/eeg/raw_info     ─────────>         (Python)        ───>   └─> eeg_raw
+/eeg/processed    ─────────>                         ───>       eeg_preprocessed
+/eeg/processed_info ───────>                                     
+                                                             Nginx:8080
+                                                             └─> Real-Time Dashboard
+                                                                 └─> Proxies InfluxDB API
 ```
 
-## Installation
+## Quick Start (Docker Compose)
 
-### 1. Install InfluxDB 3.0 (or InfluxDB OSS 2.x)
+**Recommended approach** - Fully automated setup:
 
-**Option A: Docker (Recommended for Testing)**
 ```bash
-# Run InfluxDB in Docker
-docker run -d \
-  --name influxdb \
-  -p 8086:8086 \
-  -v influxdb-data:/var/lib/influxdb2 \
-  -v influxdb-config:/etc/influxdb2 \
-  influxdb:latest
+# 1. Start all services with InfluxDB enabled
+cd /home/tjalf/ros2_ws/src/healthcare_demo
+USE_INFLUXDB=1 bash launch/start.sh
+
+# Docker Compose automatically starts:
+#   - InfluxDB (pre-configured)
+#   - Nginx webserver (serves dashboard)
+#   - ROS2 nodes (simulator, preprocessor, bridge)
 ```
 
-**Option B: Native Installation (Ubuntu/Debian)**
+**Access the dashboard:**
+- Real-Time Dashboard: http://localhost:8080
+- InfluxDB UI: http://localhost:8086 (admin / healthcare2026)
+
+That's it! The system is fully configured and running.
+
+## Installation (Manual Setup)
+
+<details>
+<summary>Click to expand manual installation instructions (not needed for Docker Compose)</summary>
+
+### Option A: Docker Compose (Automated - Recommended)
+
+```bash
+# All services are defined in docker-compose.yml
+cd /home/tjalf/ros2_ws/src/healthcare_demo
+docker-compose up -d
+```
+
+Pre-configured with:
+- Username: `admin`
+- Password: `healthcare2026`
+- Organization: `healthcare`
+- Bucket: `eeg_data`
+- Token: `healthcare-eeg-token-2026`
+
+### Option B: Native Installation (Ubuntu/Debian)
+
+⚠️ **Legacy approach** - Use Docker Compose instead unless you have specific requirements.
+
 ```bash
 # Add InfluxData repository
 wget -q https://repos.influxdata.com/influxdata-archive_compat.key
@@ -53,33 +87,31 @@ sudo systemctl enable influxdb
 sudo systemctl start influxdb
 ```
 
-### 2. Initial InfluxDB Setup
+Then complete setup at http://localhost:8086 with credentials matching Docker Compose defaults.
 
-Open your browser to `http://localhost:8086` and complete the setup wizard:
-
-1. **Create Initial User**
-   - Username: `admin`
-   - Password: (choose a secure password)
-   - Organization: `healthcare`
-   - Bucket: `eeg_data`
-
-2. **Generate API Token**
-   - Go to: Data → API Tokens → Generate API Token → All Access Token
-   - Copy the token (you'll need this later)
-
-### 3. Install Python InfluxDB Client
-
-```bash
-# Activate your Python virtual environment
-source ~/hcmd-venv/bin/activate
-
-# Install InfluxDB client library
-pip install influxdb-client
-```
+</details>
 
 ## Configuration
 
-### Environment Variables
+### Docker Compose (Default)
+
+No manual configuration needed! The `docker-compose.yml` includes:
+
+```yaml
+environment:
+  - DOCKER_INFLUXDB_INIT_USERNAME=admin
+  - DOCKER_INFLUXDB_INIT_PASSWORD=healthcare2026
+  - DOCKER_INFLUXDB_INIT_ORG=healthcare
+  - DOCKER_INFLUXDB_INIT_BUCKET=eeg_data
+  - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=healthcare-eeg-token-2026
+```
+
+The `start.sh` script automatically sets these environment variables for the bridge node.
+
+### Manual Configuration (Legacy)
+
+<details>
+<summary>Only needed if not using Docker Compose</summary>
 
 Set these before starting the bridge node:
 
@@ -97,6 +129,8 @@ echo 'export INFLUXDB_ORG="healthcare"' >> ~/.bashrc
 echo 'export INFLUXDB_BUCKET="eeg_data"' >> ~/.bashrc
 source ~/.bashrc
 ```
+
+</details>
 
 ## Usage
 

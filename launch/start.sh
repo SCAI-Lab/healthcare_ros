@@ -290,6 +290,104 @@ OPENBCI_PORT="${OPENBCI_PORT:-/dev/ttyUSB0}"  # OpenBCI serial port
 OPENBCI_CHANNELS="${OPENBCI_CHANNELS:-8}"  # OpenBCI channel count (8 or 16)
 USE_ROSBAG="${USE_ROSBAG:-0}"  # 1=use rosbag (MCAP), 0=use JSON files
 USE_INFLUXDB="${USE_INFLUXDB:-0}"  # 1=enable InfluxDB bridge for web visualization
+MANAGE_DOCKER="${MANAGE_DOCKER:-1}"  # 1=automatically start/stop Docker services, 0=manual
+ENCRYPTED_ENV="${ENCRYPTED_ENV:-0}"  # 1=use encrypted .env.encrypted file, 0=use plain .env
+
+# Start Docker Compose services if enabled
+if [ "$USE_INFLUXDB" -eq 1 ] && [ "$MANAGE_DOCKER" -eq 1 ]; then
+    echo "Starting Docker Compose services (InfluxDB + Nginx)..."
+    if command -v docker-compose >/dev/null 2>&1; then
+        cd "$PROJECT_ROOT" || exit 1
+        
+        # Handle encrypted or plain credentials
+        if [ "$ENCRYPTED_ENV" -eq 1 ]; then
+            echo "🔐 Using encrypted credentials..."
+            
+            # Check if encrypted file exists
+            if [ ! -f "$PROJECT_ROOT/.env.encrypted" ]; then
+                echo "❌ ERROR: .env.encrypted file not found!"
+                echo ""
+                echo "Please encrypt your credentials first:"
+                echo "  cd $PROJECT_ROOT"
+                echo "  python3 scripts/encrypt_credentials.py --setup"
+                echo ""
+                exit 1
+            fi
+            
+            # Decrypt credentials
+            echo "Decrypting credentials..."
+            if ! "$VENV_PATH/bin/python3" "$PROJECT_ROOT/scripts/encrypt_credentials.py" --decrypt; then
+                echo "❌ Decryption failed!"
+                exit 1
+            fi
+            
+            # Clean up decrypted file on exit
+            trap 'rm -f "$PROJECT_ROOT/.env" 2>/dev/null' EXIT
+        else
+            # Load credentials from plain .env file (REQUIRED)
+            if [ ! -f "$PROJECT_ROOT/.env" ]; then
+                echo "❌ ERROR: .env file not found!"
+                echo ""
+                echo "The .env file is required for security reasons."
+                echo "Please create it before starting:"
+                echo ""
+                echo "  cd $PROJECT_ROOT"
+                echo "  cp .env.example .env"
+                echo "  # Edit .env with your secure credentials"
+                echo ""
+                echo "For better security, use encrypted credentials:"
+                echo "  python3 scripts/encrypt_credentials.py --setup"
+                echo "  ENCRYPTED_ENV=1 bash launch/start.sh"
+                echo ""
+                echo "See CREDENTIALS_SETUP.md for details."
+                exit 1
+            fi
+        fi
+        
+        echo "Loading credentials from .env..."
+        set -a  # Export all variables
+        source "$PROJECT_ROOT/.env"
+        set +a
+        
+        # Validate required environment variables
+        if [ -z "$INFLUXDB_ADMIN_USERNAME" ] || [ -z "$INFLUXDB_ADMIN_PASSWORD" ] || [ -z "$INFLUXDB_ADMIN_TOKEN" ]; then
+            echo "❌ ERROR: Missing required credentials in .env file!"
+            echo ""
+            echo "Required variables:"
+            echo "  - INFLUXDB_ADMIN_USERNAME"
+            echo "  - INFLUXDB_ADMIN_PASSWORD"
+            echo "  - INFLUXDB_ADMIN_TOKEN"
+            echo ""
+            echo "Please check your .env file and try again."
+            exit 1
+        fi
+        
+        # Generate dashboard with credentials
+        echo "Generating dashboard with credentials..."
+        python3 "$PROJECT_ROOT/generate_dashboard.py" || {
+            echo "❌ ERROR: Failed to generate dashboard."
+            echo "Please check generate_dashboard.py and your .env file."
+            exit 1
+        }
+        
+        docker-compose up -d
+        echo "Waiting for services to be ready..."
+        sleep 3
+        
+        # Check if services are running
+        if docker-compose ps | grep -q "Up"; then
+            echo "✅ Docker services started successfully"
+            echo "   - InfluxDB: http://localhost:8086"
+            echo "   - Dashboard: http://localhost:8080"
+        else
+            echo "❌ Docker services failed to start. Check: docker-compose logs"
+        fi
+        cd "$WORKSPACE" || exit 1
+    else
+        echo "⚠️  docker-compose not found. Install it with: sudo apt-get install docker-compose"
+        echo "    Or disable automatic Docker management: MANAGE_DOCKER=0"
+    fi
+fi
 
 if [ "$RUN_NODE" -eq 1 ]; then
     LOG_DIR="$PROJECT_ROOT/logs"
@@ -403,11 +501,19 @@ if [ "$RUN_NODE" -eq 1 ]; then
         INFLUXDB_BRIDGE_LOG_FILE="$LOG_DIR/eeg_influxdb_bridge.log"
         INFLUXDB_BRIDGE_SCRIPT="$PROJECT_ROOT/nodes/saver/eeg_influxdb_bridge.py"
         
-        # Set InfluxDB credentials (use defaults if not set)
+        # Ensure credentials are loaded (either from decryption or plain .env)
+        if [ ! -f "$PROJECT_ROOT/.env" ]; then
+            echo "❌ ERROR: .env file not found!"
+            echo "Credentials should have been loaded earlier in the script."
+            echo "This is a logic error. Please report this issue."
+            exit 1
+        fi
+        
+        # Credentials already loaded earlier, just export what's needed
         export INFLUXDB_URL="${INFLUXDB_URL:-http://localhost:8086}"
-        export INFLUXDB_TOKEN="${INFLUXDB_TOKEN:-healthcare-eeg-token-2026}"
-        export INFLUXDB_ORG="${INFLUXDB_ORG:-healthcare}"
-        export INFLUXDB_BUCKET="${INFLUXDB_BUCKET:-eeg_data}"
+        export INFLUXDB_TOKEN="${INFLUXDB_ADMIN_TOKEN}"
+        export INFLUXDB_ORG="${INFLUXDB_ORG}"
+        export INFLUXDB_BUCKET="${INFLUXDB_BUCKET}"
         
         if [ -f "$INFLUXDB_BRIDGE_SCRIPT" ]; then
             nohup "$VENV_PATH/bin/python3" "$INFLUXDB_BRIDGE_SCRIPT" >> "$INFLUXDB_BRIDGE_LOG_FILE" 2>&1 &
@@ -415,9 +521,11 @@ if [ "$RUN_NODE" -eq 1 ]; then
             echo "eeg_influxdb_bridge started with PID $INFLUXDB_PID. Logs: $INFLUXDB_BRIDGE_LOG_FILE"
             echo "$INFLUXDB_PID" > "$LOG_DIR/eeg_influxdb_bridge.pid"
             echo ""
-            echo "InfluxDB Web UI: $INFLUXDB_URL"
-            echo "  Username: admin"
-            echo "  Password: healthcare2026"
+            echo "🌐 Web Visualization URLs:"
+            echo "   - Real-Time Dashboard: http://localhost:8080"
+            echo "   - InfluxDB UI: $INFLUXDB_URL"
+            echo "   - Username: admin"
+            echo "   - Password: healthcare2026"
             echo ""
         else
             echo "InfluxDB bridge script not found at $INFLUXDB_BRIDGE_SCRIPT; skipping"
@@ -505,13 +613,19 @@ if [ "$RUN_NODE" -eq 1 ]; then
         echo "  - Preprocessed: $PROJECT_ROOT/eeg_data/eeg_preprocessed_data.jsonl"
         echo ""
         if [ "$USE_INFLUXDB" -eq 1 ]; then
-            echo "InfluxDB Web Visualization:"
-            echo "  - URL: ${INFLUXDB_URL:-http://localhost:8086}"
+            echo "🌐 Web Visualization:"
+            echo "  - Real-Time Dashboard: http://localhost:8080"
+            echo "  - InfluxDB UI: ${INFLUXDB_URL:-http://localhost:8086}"
             echo "  - Username: admin"
             echo "  - Password: healthcare2026"
             echo "  - Org: ${INFLUXDB_ORG:-healthcare}"
             echo "  - Bucket: ${INFLUXDB_BUCKET:-eeg_data}"
             echo "  - Measurements: eeg_raw, eeg_preprocessed"
+            echo ""
+            echo "Docker Services (managed by docker-compose):"
+            echo "  - Start: cd $PROJECT_ROOT && docker-compose up -d"
+            echo "  - Stop: cd $PROJECT_ROOT && docker-compose down"
+            echo "  - Logs: docker-compose logs -f nginx influxdb"
             echo ""
         fi
         echo "View stored data:"

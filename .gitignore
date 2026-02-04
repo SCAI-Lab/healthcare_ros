@@ -224,6 +224,9 @@ venv/
 config/*.yaml
 config/*.yml
 
+# Encrypted credentials (optional: uncomment to commit encrypted backups)
+# .env.encrypted
+
 # ROS build/install artifacts (workspace-local)
 /build/
 /install/
@@ -233,3 +236,6 @@ config/*.yml
 .vscode/
 .pytest_cache/
 *.mcap
+
+# Generated files with credentials
+docs/influxdb_realtime_dashboard.html

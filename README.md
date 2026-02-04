@@ -10,32 +10,140 @@ This project demonstrates a complete EEG data processing pipeline using ROS2 and
 
 ## Quick Start
 
+### 1. Setup Credentials (Required for Web Dashboard)
+
+If you want to use the web-based real-time visualization, you **must** create a `.env` file:
+
 ```bash
-cd ~/ros2_ws/src/-healthcare_demo
+cd ~/ros2_ws/src/healthcare_demo
 
-# Start with simulator (no hardware needed)
-USE_ACQUISITION=0 ./launch/start.sh
+# Copy the example file
+cp .env.example .env
 
-# Or with real hardware
-USE_ACQUISITION=1 ./launch/start.sh  # OpenBCI
-USE_ACQUISITION=2 ./launch/start.sh  # Neurosity
+# Edit with your secure credentials
+nano .env
 ```
 
-For detailed usage and configuration options, see [`launch/STARTUP_COMMANDS.md`](launch/STARTUP_COMMANDS.md).
+**Important:** Change the default credentials! Your `.env` file should contain:
+
+```bash
+# InfluxDB Admin Credentials
+INFLUXDB_ADMIN_USERNAME=admin
+INFLUXDB_ADMIN_PASSWORD=YourSecureP@ssw0rd!Here  # Min. 3 special characters
+
+# InfluxDB Configuration
+INFLUXDB_ORG=healthcare
+INFLUXDB_BUCKET=eeg_data
+INFLUXDB_ADMIN_TOKEN=your-secure-t0ken!2026@api  # Min. 3 special characters
+```
+
+**Security Options:**
+
+**Option 1: Plain .env (Quick Start)**
+```bash
+nano .env  # Edit credentials
+USE_INFLUXDB=1 bash launch/start.sh
+```
+
+**Option 2: Encrypted .env (Recommended for Production)**
+```bash
+# Encrypt your credentials
+python3 scripts/encrypt_credentials.py --setup
+# Enter master password when prompted
+
+# Use encrypted credentials
+ENCRYPTED_ENV=1 USE_INFLUXDB=1 bash launch/start.sh
+# Enter master password when prompted
+```
+
+**Security Requirements:**
+- Password must contain at least **3 special characters** (e.g., `!@#$%^&*`)
+- Never commit `.env` to git (already in `.gitignore`)
+- For encryption guide: See `ENCRYPTION_GUIDE.md`
+- For general security: See `CREDENTIALS_SETUP.md`
+
+### 2. Start the System
+
+### 2. Start the System
+
+#### Web-Based Real-Time Visualization (with InfluxDB + Nginx)
+
+```bash
+cd ~/ros2_ws/src/healthcare_demo
+
+# IMPORTANT: Create .env file first (see step 1 above)
+# The system will NOT start without a valid .env file
+
+# Start with web dashboard
+USE_INFLUXDB=1 bash launch/start.sh
+
+# Access URLs:
+# - Real-Time Dashboard: http://localhost:8080
+# - InfluxDB UI: http://localhost:8086
+# - Login with credentials from your .env file
+```
+
+**Features:**
+- ✨ 50ms refresh rate for smooth real-time visualization
+- 📊 4-channel EEG waveforms (FP1, FP2, F3, F4)
+- 🔄 Toggle between RAW and PREPROCESSED data
+- 🌐 Access from any device on your network
+- 🐳 Fully automated Docker Compose setup
+- 🔒 Secure credential management via `.env` file
+
+**Troubleshooting:**
+- If you get "ERROR: .env file not found", create it first (see step 1)
+- If you get "Missing required credentials", check your `.env` file format
+- See `CREDENTIALS_SETUP.md` for detailed help
+
+#### Local Simulator (No Web Dashboard - No .env Required)
+
+```bash
+cd ~/ros2_ws/src/healthcare_demo
+
+# Start with simulator (no hardware needed, no .env required)
+bash launch/start.sh
+
+# Data saved to: eeg_data/eeg_raw_data.jsonl
+```
+
+#### Hardware Devices
+
+```bash
+# OpenBCI Cyton Board
+USE_ACQUISITION=1 OPENBCI_PORT=/dev/ttyUSB0 bash launch/start.sh
+
+# Neurosity Crown
+USE_ACQUISITION=2 bash launch/start.sh
+```
+
+For detailed configuration, see [`launch/STARTUP_COMMANDS.md`](launch/STARTUP_COMMANDS.md).
 
 ## Architecture
 
 ### Pipeline Overview
 
 ```
-┌─────────────────┐      ┌──────────────┐      ┌─────────────┐
-│  Data Source    │─────▶│ Preprocessor │─────▶│   Savers    │
-│  (Acquisition)  │      │  (Optional)  │      │ (JSON/MCAP) │
-└─────────────────┘      └──────────────┘      └─────────────┘
+┌─────────────────┐      ┌──────────────┐      ┌─────────────────┐
+│  Data Source    │─────▶│ Preprocessor │─────▶│   Savers        │
+│  (Acquisition)  │      │  (Optional)  │      │ (JSON/MCAP)     │
+└─────────────────┘      └──────────────┘      └─────────────────┘
        │                        │                      │
        ▼                        ▼                      ▼
-  /eeg/raw              /eeg/processed         eeg_data/*.jsonl
-  /eeg/raw_info         /eeg/processed_info    rosbag_data/*.mcap
+  /eeg/raw              /eeg/processed      ┌─────────────────────┐
+  /eeg/raw_info         /eeg/processed_info │  eeg_data/*.jsonl   │
+                                            │  rosbag_data/*.mcap │
+                                            └─────────────────────┘
+                                                      │
+                                                      ▼
+                                            ┌─────────────────────┐
+                                            │  Web Visualization  │
+                                            │  (Optional)         │
+                                            ├─────────────────────┤
+                                            │ InfluxDB:8086       │
+                                            │ Nginx:8080          │
+                                            │ Real-Time Dashboard │
+                                            └─────────────────────┘
 ```
 
 ### Components
@@ -51,8 +159,10 @@ For detailed usage and configuration options, see [`launch/STARTUP_COMMANDS.md`]
 **3. Data Savers** (`nodes/saver/`)
 - **JSON Saver** - Stores data in JSONL format with metadata (overwrites on startup)
 - **Rosbag Saver** - Records to MCAP format for ROS2 playback
+- **InfluxDB Bridge** - Real-time streaming to time-series database (optional, `USE_INFLUXDB=1`)
 
 **4. Visualization** (`nodes/visualization/`)
+- **Web Dashboard** - Real-time browser-based visualization (http://localhost:8080)
 - **RQT Plugin** - Real-time plotting GUI
 - **Offline Plotter** - Static comparison plots (auto-numbered, saves to `plots/`)
 

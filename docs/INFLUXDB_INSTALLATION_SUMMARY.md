@@ -1,5 +1,28 @@
 # InfluxDB Integration - Installation Summary
 
+> **✅ UPDATE (Feb 2026): Now managed by Docker Compose**  
+> This file contains the original manual installation summary. The system now uses automated Docker Compose setup.  
+> See `NGINX_SETUP.md` and `docker-compose.yml` for current architecture.
+
+---
+
+## Quick Start (Current Method)
+
+```bash
+cd /home/tjalf/ros2_ws/src/healthcare_demo
+USE_INFLUXDB=1 bash launch/start.sh
+
+# Access dashboard: http://localhost:8080
+# Access InfluxDB UI: http://localhost:8086
+```
+
+---
+
+## Legacy Installation Summary (Historical Reference)
+
+<details>
+<summary>Original manual setup process (automated as of Feb 2026)</summary>
+
 ## ✅ What Was Installed & Configured
 
 ### 1. InfluxDB Database
@@ -260,3 +283,43 @@ docker cp influxdb:/tmp/backup ./influxdb_backup
 
 Your EEG simulator data is now streaming to InfluxDB in real-time.
 Open http://localhost:8086 to start visualizing!
+
+</details>
+
+---
+
+## Current Docker Compose Architecture (Feb 2026)
+
+The system now uses `docker-compose.yml` which automates everything:
+
+### Managed Services
+1. **InfluxDB Container** - Pre-configured with credentials
+2. **Nginx Webserver** - Serves real-time dashboard at http://localhost:8080
+3. **Persistent Volumes** - Data survives container restarts
+4. **Network Bridge** - Isolated Docker network for inter-service communication
+
+### Benefits Over Manual Setup
+- ✅ One-command startup: `docker-compose up -d`
+- ✅ Automatic configuration (no manual setup wizard)
+- ✅ Integrated web dashboard with Nginx proxy
+- ✅ Easy cleanup: `docker-compose down`
+- ✅ Reproducible across systems
+- ✅ Production-ready with SSL support
+
+### Quick Commands
+```bash
+# Start everything
+cd /home/tjalf/ros2_ws/src/healthcare_demo
+USE_INFLUXDB=1 bash launch/start.sh
+
+# View Docker logs
+docker-compose logs -f
+
+# Restart services
+docker-compose restart
+
+# Stop and remove
+docker-compose down
+```
+
+See `NGINX_SETUP.md` for complete documentation.
