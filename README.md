@@ -113,6 +113,7 @@ USE_ACQUISITION=1 OPENBCI_PORT=/dev/ttyUSB0 OPENBCI_CHANNELS=8 ./launch/start.sh
 | `USE_ACQUISITION` | `0` | Data source: 0=simulator, 1=OpenBCI, 2=Neurosity |
 | `OPENBCI_PORT` | `/dev/ttyUSB0` | Serial port for OpenBCI |
 | `OPENBCI_CHANNELS` | `8` | OpenBCI channels (8 or 16) |
+| `USE_INFLUXDB` | `0` | Set to 1 to enable InfluxDB bridge for web visualization |
 | `RUN_TESTS` | `0` | Set to 1 to run tests |
 | `VENV_PATH` | `~/hcmd-venv` | Virtual environment path |
 | `VISUALIZATION_MODE` | `none` | `comparison` or `rqt` |
@@ -124,6 +125,9 @@ USE_ACQUISITION=1 OPENBCI_PORT=/dev/ttyUSB0 OPENBCI_CHANNELS=8 ./launch/start.sh
 USE_ACQUISITION=0 ./launch/start.sh  # Simulator
 USE_ACQUISITION=1 ./launch/start.sh  # OpenBCI
 USE_ACQUISITION=2 ./launch/start.sh  # Neurosity
+
+# Enable real-time web visualization with InfluxDB
+USE_INFLUXDB=1 ./launch/start.sh
 
 # Run tests
 RUN_TESTS=1 RUN_NODE=0 ./launch/start.sh

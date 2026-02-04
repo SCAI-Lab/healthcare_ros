@@ -142,6 +142,7 @@ pip_install_if_missing yaml pyyaml
 pip_install_if_missing neurosity neurosity
 pip_install_if_missing dotenv python-dotenv
 pip_install_if_missing mne mne
+pip_install_if_missing influxdb_client influxdb-client
 
 # 4) Change to workspace
 if [ -d "$WORKSPACE" ]; then
@@ -288,6 +289,7 @@ USE_ACQUISITION="${USE_ACQUISITION:-0}"  # 0=simulator, 1=OpenBCI, 2=Neurosity
 OPENBCI_PORT="${OPENBCI_PORT:-/dev/ttyUSB0}"  # OpenBCI serial port
 OPENBCI_CHANNELS="${OPENBCI_CHANNELS:-8}"  # OpenBCI channel count (8 or 16)
 USE_ROSBAG="${USE_ROSBAG:-0}"  # 1=use rosbag (MCAP), 0=use JSON files
+USE_INFLUXDB="${USE_INFLUXDB:-0}"  # 1=enable InfluxDB bridge for web visualization
 
 if [ "$RUN_NODE" -eq 1 ]; then
     LOG_DIR="$PROJECT_ROOT/logs"
@@ -394,6 +396,33 @@ if [ "$RUN_NODE" -eq 1 ]; then
     else
         echo "Preprocessor script not found at $PREPROC_SCRIPT; skipping preprocessor start"
     fi
+    
+    # Start InfluxDB bridge node (optional)
+    if [ "$USE_INFLUXDB" -eq 1 ]; then
+        echo "Starting InfluxDB bridge for web-based visualization..."
+        INFLUXDB_BRIDGE_LOG_FILE="$LOG_DIR/eeg_influxdb_bridge.log"
+        INFLUXDB_BRIDGE_SCRIPT="$PROJECT_ROOT/nodes/saver/eeg_influxdb_bridge.py"
+        
+        # Set InfluxDB credentials (use defaults if not set)
+        export INFLUXDB_URL="${INFLUXDB_URL:-http://localhost:8086}"
+        export INFLUXDB_TOKEN="${INFLUXDB_TOKEN:-healthcare-eeg-token-2026}"
+        export INFLUXDB_ORG="${INFLUXDB_ORG:-healthcare}"
+        export INFLUXDB_BUCKET="${INFLUXDB_BUCKET:-eeg_data}"
+        
+        if [ -f "$INFLUXDB_BRIDGE_SCRIPT" ]; then
+            nohup "$VENV_PATH/bin/python3" "$INFLUXDB_BRIDGE_SCRIPT" >> "$INFLUXDB_BRIDGE_LOG_FILE" 2>&1 &
+            INFLUXDB_PID=$!
+            echo "eeg_influxdb_bridge started with PID $INFLUXDB_PID. Logs: $INFLUXDB_BRIDGE_LOG_FILE"
+            echo "$INFLUXDB_PID" > "$LOG_DIR/eeg_influxdb_bridge.pid"
+            echo ""
+            echo "InfluxDB Web UI: $INFLUXDB_URL"
+            echo "  Username: admin"
+            echo "  Password: healthcare2026"
+            echo ""
+        else
+            echo "InfluxDB bridge script not found at $INFLUXDB_BRIDGE_SCRIPT; skipping"
+        fi
+    fi
 fi
 
 
@@ -467,11 +496,24 @@ if [ "$RUN_NODE" -eq 1 ]; then
         echo "  - eeg_json_saver (raw) (PID: $(cat $LOG_DIR/eeg_json_saver_raw.pid 2>/dev/null || echo '?'))"
         echo "  - eeg_json_saver (preprocessed) (PID: $(cat $LOG_DIR/eeg_json_saver_preprocessed.pid 2>/dev/null || echo '?'))"
         echo "  - eeg_preprocessor (PID: $(cat $LOG_DIR/eeg_preprocessor.pid 2>/dev/null || echo '?'))"
+        if [ "$USE_INFLUXDB" -eq 1 ]; then
+            echo "  - eeg_influxdb_bridge (PID: $(cat $LOG_DIR/eeg_influxdb_bridge.pid 2>/dev/null || echo '?'))"
+        fi
         echo ""
         echo "EEG data files (JSONL format):"
         echo "  - Raw:        $PROJECT_ROOT/eeg_data/eeg_raw_data.jsonl"
         echo "  - Preprocessed: $PROJECT_ROOT/eeg_data/eeg_preprocessed_data.jsonl"
         echo ""
+        if [ "$USE_INFLUXDB" -eq 1 ]; then
+            echo "InfluxDB Web Visualization:"
+            echo "  - URL: ${INFLUXDB_URL:-http://localhost:8086}"
+            echo "  - Username: admin"
+            echo "  - Password: healthcare2026"
+            echo "  - Org: ${INFLUXDB_ORG:-healthcare}"
+            echo "  - Bucket: ${INFLUXDB_BUCKET:-eeg_data}"
+            echo "  - Measurements: eeg_raw, eeg_preprocessed"
+            echo ""
+        fi
         echo "View stored data:"
         echo "  head -1 $PROJECT_ROOT/eeg_data/eeg_raw_data.jsonl | python3 -m json.tool"
         echo ""
@@ -480,6 +522,9 @@ if [ "$RUN_NODE" -eq 1 ]; then
         echo "  - Raw Saver:  tail -f $LOG_DIR/eeg_json_saver_raw.log"
         echo "  - Preprocessor: tail -f $LOG_DIR/eeg_preprocessor.log"
         echo "  - Prep Saver: tail -f $LOG_DIR/eeg_json_saver_preprocessed.log"
+        if [ "$USE_INFLUXDB" -eq 1 ]; then
+            echo "  - InfluxDB:   tail -f $LOG_DIR/eeg_influxdb_bridge.log"
+        fi
     fi
     echo ""
     echo "Stop all nodes:"

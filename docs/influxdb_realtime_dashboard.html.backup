@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time EEG Dashboard - InfluxDB</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        .header h1 {
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .status {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 12px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 20px;
+            font-size: 12px;
+        }
+        .pulse {
+            width: 8px;
+            height: 8px;
+            background: #48bb78;
+            border-radius: 50%;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        .container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            grid-template-rows: repeat(2, 1fr);
+            gap: 15px;
+            padding: 15px;
+            height: calc(100vh - 70px);
+        }
+        .channel-card {
+            background: #1e293b;
+            border-radius: 12px;
+            padding: 15px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+        }
+        .channel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #334155;
+        }
+        .channel-name {
+            font-size: 18px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .channel-stats {
+            display: flex;
+            gap: 15px;
+            font-size: 11px;
+        }
+        .stat {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .stat-label {
+            color: #94a3b8;
+        }
+        .stat-value {
+            font-weight: bold;
+            font-size: 13px;
+        }
+        .chart-container {
+            flex: 1;
+            position: relative;
+            min-height: 0;
+        }
+        .quality-bar {
+            height: 4px;
+            background: #334155;
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+        .quality-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ef4444, #f59e0b, #10b981);
+            transition: width 0.1s ease;
+        }
+        .stream-toggle {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+            background: #1e293b;
+            padding: 10px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        }
+        .toggle-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+            transition: all 0.2s;
+        }
+        .toggle-btn.active {
+            background: #667eea;
+            color: white;
+        }
+        .toggle-btn:not(.active) {
+            background: #334155;
+            color: #94a3b8;
+        }
+        .toggle-btn:hover {
+            transform: translateY(-2px);
+        }
+        .error-message {
+            position: fixed;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #dc2626;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            display: none;
+            z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>
+            <span>🧠</span>
+            <span>Real-Time EEG Dashboard</span>
+        </h1>
+        <div class="status">
+            <div class="status-badge">
+                <div class="pulse"></div>
+                <span>LIVE</span>
+            </div>
+            <div class="status-badge">
+                <span id="dataRate">0 Hz</span>
+            </div>
+            <div class="status-badge">
+                <span id="latency">0ms</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="error-message" id="errorMessage"></div>
+
+    <div class="container">
+        <div class="channel-card" id="channel-FP1">
+            <div class="channel-header">
+                <span class="channel-name">FP1</span>
+                <div class="channel-stats">
+                    <div class="stat">
+                        <span class="stat-label">Mean</span>
+                        <span class="stat-value" id="mean-FP1">0.0</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Min</span>
+                        <span class="stat-value" id="min-FP1">0.0</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Max</span>
+                        <span class="stat-value" id="max-FP1">0.0</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Quality</span>
+                        <span class="stat-value" id="quality-FP1">0%</span>
+                    </div>
+                </div>
+            </div>
+            <div class="quality-bar">
+                <div class="quality-fill" id="quality-bar-FP1" style="width: 0%"></div>
+            </div>
+            <div class="chart-container">
+                <canvas id="chart-FP1"></canvas>
+            </div>
+        </div>
+
+        <div class="channel-card" id="channel-FP2">
+            <div class="channel-header">
+                <span class="channel-name">FP2</span>
+                <div class="channel-stats">
+                    <div class="stat">
+                        <span class="stat-label">Mean</span>
+                        <span class="stat-value" id="mean-FP2">0.0</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Min</span>
+                        <span class="stat-value" id="min-FP2">0.0</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Max</span>
+                        <span class="stat-value" id="max-FP2">0.0</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Quality</span>
+                        <span class="stat-value" id="quality-FP2">0%</span>
+                    </div>
+                </div>
+            </div>
+            <div class="quality-bar">
+                <div class="quality-fill" id="quality-bar-FP2" style="width: 0%"></div>
+            </div>
+            <div class="chart-container">
+                <canvas id="chart-FP2"></canvas>
+            </div>
+        </div>
+
+        <div class="channel-card" id="channel-F3">
+            <div class="channel-header">
+                <span class="channel-name">F3</span>
+                <div class="channel-stats">
+                    <div class="stat">
+                        <span class="stat-label">Mean</span>
+                        <span class="stat-value" id="mean-F3">0.0</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Min</span>
+                        <span class="stat-value" id="min-F3">0.0</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Max</span>
+                        <span class="stat-value" id="max-F3">0.0</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Quality</span>
+                        <span class="stat-value" id="quality-F3">0%</span>
+                    </div>
+                </div>
+            </div>
+            <div class="quality-bar">
+                <div class="quality-fill" id="quality-bar-F3" style="width: 0%"></div>
+            </div>
+            <div class="chart-container">
+                <canvas id="chart-F3"></canvas>
+            </div>
+        </div>
+
+        <div class="channel-card" id="channel-F4">
+            <div class="channel-header">
+                <span class="channel-name">F4</span>
+                <div class="channel-stats">
+                    <div class="stat">
+                        <span class="stat-label">Mean</span>
+                        <span class="stat-value" id="mean-F4">0.0</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Min</span>
+                        <span class="stat-value" id="min-F4">0.0</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Max</span>
+                        <span class="stat-value" id="max-F4">0.0</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Quality</span>
+                        <span class="stat-value" id="quality-F4">0%</span>
+                    </div>
+                </div>
+            </div>
+            <div class="quality-bar">
+                <div class="quality-fill" id="quality-bar-F4" style="width: 0%"></div>
+            </div>
+            <div class="chart-container">
+                <canvas id="chart-F4"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="stream-toggle">
+        <button class="toggle-btn active" id="btn-raw" onclick="setStream('raw')">RAW</button>
+        <button class="toggle-btn" id="btn-preprocessed" onclick="setStream('preprocessed')">PREPROCESSED</button>
+    </div>
+
+    <script>
+        // Configuration
+        const INFLUXDB_URL = 'http://localhost:8086';
+        const INFLUXDB_TOKEN = 'healthcare-eeg-token-2026';
+        const INFLUXDB_ORG = 'healthcare';
+        const INFLUXDB_BUCKET = 'eeg_data';
+        const REFRESH_INTERVAL = 50; // 50ms = 0.05 seconds (20 Hz)
+        const MAX_DATA_POINTS = 300; // Keep last 300 points (~15 seconds at 20 Hz)
+        
+        const CHANNELS = ['FP1', 'FP2', 'F3', 'F4'];
+        const CHANNEL_MAP = {
+            'FP1': ['FP1', 'CH1'],
+            'FP2': ['FP2', 'CH2'],
+            'F3': ['F3', 'CH3'],
+            'F4': ['F4', 'CH4']
+        };
+        let currentStream = 'raw';
+        let charts = {};
+        let lastUpdateTime = Date.now();
+        let updateCount = 0;
+
+        // Initialize charts for each channel
+        CHANNELS.forEach(channel => {
+            const ctx = document.getElementById(`chart-${channel}`).getContext('2d');
+            charts[channel] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: `${channel} (μV)`,
+                        data: [],
+                        borderColor: getChannelColor(channel),
+                        backgroundColor: getChannelColor(channel, 0.1),
+                        borderWidth: 2,
+                        tension: 0.4,
+                        pointRadius: 0,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: false, // Disable animation for real-time performance
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            enabled: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: false
+                        },
+                        y: {
+                            grid: {
+                                color: 'rgba(148, 163, 184, 0.1)'
+                            },
+                            ticks: {
+                                color: '#94a3b8',
+                                font: {
+                                    size: 10
+                                }
+                            },
+                            suggestedMin: -50,
+                            suggestedMax: 50
+                        }
+                    },
+                    transitions: {
+                        active: {
+                            animation: {
+                                duration: 0
+                            }
+                        }
+                    }
+                }
+            });
+        });
+
+        function getChannelColor(channel, alpha = 1) {
+            const colors = {
+                'FP1': `rgba(99, 102, 241, ${alpha})`,
+                'FP2': `rgba(236, 72, 153, ${alpha})`,
+                'F3': `rgba(34, 197, 94, ${alpha})`,
+                'F4': `rgba(251, 146, 60, ${alpha})`
+            };
+            return colors[channel] || `rgba(148, 163, 184, ${alpha})`;
+        }
+
+        function setStream(stream) {
+            currentStream = stream;
+            document.getElementById('btn-raw').classList.toggle('active', stream === 'raw');
+            document.getElementById('btn-preprocessed').classList.toggle('active', stream === 'preprocessed');
+            
+            // Clear existing data when switching
+            CHANNELS.forEach(channel => {
+                charts[channel].data.labels = [];
+                charts[channel].data.datasets[0].data = [];
+                charts[channel].update('none');
+            });
+        }
+
+        async function fetchData() {
+            const startTime = Date.now();
+            const measurement = currentStream === 'raw' ? 'eeg_raw' : 'eeg_preprocessed';
+            
+            const query = `
+                from(bucket: "${INFLUXDB_BUCKET}")
+                |> range(start: -3s)
+                |> filter(fn: (r) => r["_measurement"] == "${measurement}")
+                |> filter(fn: (r) => r["_field"] == "mean" or r["_field"] == "min" or r["_field"] == "max" or r["_field"] == "quality")
+                |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
+                |> group(columns: ["channel"])
+                |> sort(columns: ["_time"], desc: false)
+            `;
+
+            try {
+                const response = await fetch(`${INFLUXDB_URL}/api/v2/query?org=${INFLUXDB_ORG}`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Token ${INFLUXDB_TOKEN}`,
+                        'Content-Type': 'application/vnd.flux',
+                        'Accept': 'application/csv'
+                    },
+                    body: query
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const csv = await response.text();
+                parseAndUpdateCharts(csv);
+                
+                // Update performance metrics
+                updateCount++;
+                const latency = Date.now() - startTime;
+                document.getElementById('latency').textContent = `${latency}ms`;
+                
+                // Calculate data rate every second
+                const now = Date.now();
+                if (now - lastUpdateTime >= 1000) {
+                    const rate = updateCount;
+                    document.getElementById('dataRate').textContent = `${rate} Hz`;
+                    updateCount = 0;
+                    lastUpdateTime = now;
+                }
+
+                hideError();
+            } catch (error) {
+                console.error('Error fetching data:', error);
+                showError(`Connection error: ${error.message}`);
+            }
+        }
+
+        function parseAndUpdateCharts(csv) {
+            const lines = csv.trim().split('\n');
+            if (lines.length < 2) return;
+
+            // Parse CSV header to find column indices
+            const header = lines[0].split(',');
+            const timeIdx = header.indexOf('_time');
+            const channelIdx = header.indexOf('channel');
+            const meanIdx = header.indexOf('mean');
+            const minIdx = header.indexOf('min');
+            const maxIdx = header.indexOf('max');
+            const qualityIdx = header.indexOf('quality');
+
+            // Group data by channel
+            const channelData = {};
+            
+            for (let i = 1; i < lines.length; i++) {
+                if (lines[i].startsWith(',result,') || !lines[i].trim()) continue;
+                
+                const cols = lines[i].split(',');
+                if (cols.length < header.length) continue;
+
+                let channel = cols[channelIdx];
+                
+                // Map generic channel names (CH1, CH2, etc.) to proper electrode names
+                let mappedChannel = null;
+                for (const [electrode, aliases] of Object.entries(CHANNEL_MAP)) {
+                    if (aliases.includes(channel)) {
+                        mappedChannel = electrode;
+                        break;
+                    }
+                }
+                
+                if (!mappedChannel) continue;
+                channel = mappedChannel;
+
+                const timestamp = new Date(cols[timeIdx]);
+                const mean = parseFloat(cols[meanIdx]) || 0;
+                const min = parseFloat(cols[minIdx]) || 0;
+                const max = parseFloat(cols[maxIdx]) || 0;
+                const quality = parseFloat(cols[qualityIdx]) || 0;
+
+                if (!channelData[channel]) {
+                    channelData[channel] = [];
+                }
+                
+                channelData[channel].push({
+                    time: timestamp,
+                    mean: mean,
+                    min: min,
+                    max: max,
+                    quality: quality
+                });
+            }
+
+            // Update charts with new data
+            CHANNELS.forEach(channel => {
+                if (!channelData[channel] || channelData[channel].length === 0) return;
+
+                // Sort by time
+                channelData[channel].sort((a, b) => a.time - b.time);
+
+                // Add new points to chart
+                const chart = charts[channel];
+                
+                // Only add new points (avoid duplicates based on time)
+                const existingTimes = new Set(chart.data.labels);
+                let newPointsAdded = 0;
+                
+                channelData[channel].forEach(point => {
+                    const timeLabel = point.time.getTime().toString();
+                    
+                    if (!existingTimes.has(timeLabel)) {
+                        chart.data.labels.push(timeLabel);
+                        chart.data.datasets[0].data.push(point.mean);
+                        newPointsAdded++;
+                    }
+                });
+
+                // Keep only last MAX_DATA_POINTS
+                if (chart.data.labels.length > MAX_DATA_POINTS) {
+                    const excess = chart.data.labels.length - MAX_DATA_POINTS;
+                    chart.data.labels.splice(0, excess);
+                    chart.data.datasets[0].data.splice(0, excess);
+                }
+
+                // Only update if we added new points
+                if (newPointsAdded > 0) {
+                    chart.update('none'); // Update without animation
+                }
+                });
+
+                // Keep only last MAX_DATA_POINTS
+                if (chart.data.labels.length > MAX_DATA_POINTS) {
+                    const excess = chart.data.labels.length - MAX_DATA_POINTS;
+                    chart.data.labels.splice(0, excess);
+                    chart.data.datasets[0].data.splice(0, excess);
+                }
+
+                chart.update('none'); // Update without animation
+            });
+        }
+
+        function showError(message) {
+            const errorEl = document.getElementById('errorMessage');
+            errorEl.textContent = message;
+            errorEl.style.display = 'block';
+        }
+
+        function hideError() {
+            document.getElementById('errorMessage').style.display = 'none';
+        }
+
+        // Start fetching data every 100ms
+        setInterval(fetchData, REFRESH_INTERVAL);
+        
+        // Initial fetch
+        fetchData();
+        
+        console.log(`Real-time dashboard started (${REFRESH_INTERVAL}ms refresh rate)`);
+    </script>
+</body>
+</html>
