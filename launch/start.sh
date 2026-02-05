@@ -50,7 +50,7 @@ if [ "${1:-}" = "rqt" ]; then
         # Get script directory and navigate to project root
         SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
         PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-        python3 "$PROJECT_ROOT/nodes/visualization/plot_eeg_offline.py" &
+        python3 "$PROJECT_ROOT/nodes/visualization/plotting/plot_eeg_offline.py" &
     fi
     # Unset all known Snap and VSCode variables
     unset LD_LIBRARY_PATH
@@ -364,7 +364,7 @@ if [ "$USE_INFLUXDB" -eq 1 ] && [ "$MANAGE_DOCKER" -eq 1 ]; then
         
         # Generate dashboard with credentials
         echo "Generating dashboard with credentials..."
-        python3 "$PROJECT_ROOT/nodes/visualization/generate_dashboard.py" || {
+        python3 "$PROJECT_ROOT/nodes/visualization/dashboard/generate_dashboard.py" || {
             echo "❌ ERROR: Failed to generate dashboard."
             echo "Please check generate_dashboard.py and your .env file."
             exit 1
@@ -535,25 +535,22 @@ fi
 
 
 
-# Visualization mode: none (default), comparison, or rqt
+# Visualization mode: none (default) or comparison
 VISUALIZATION_MODE="${VISUALIZATION_MODE:-none}"
 
 if [ "$VISUALIZATION_MODE" = "comparison" ]; then
     echo "Starting offline EEG plotting script..."
-    python3 "$PROJECT_ROOT/nodes/visualization/plot_eeg_offline.py" &
-elif [ "$VISUALIZATION_MODE" = "rqt" ]; then
-    echo "Starting rqt EEG visualization plugin..."
-    export RQT_PLUGIN_PATH="$PROJECT_ROOT/nodes/visualization/eeg_visualization_rqt"
-    rqt --standalone eeg_visualization_rqt &
+    python3 "$PROJECT_ROOT/nodes/visualization/plotting/plot_eeg_offline.py" &
 else
-    echo "Visualization disabled."
+    echo "Visualization disabled (use web dashboard at http://localhost:8080)."
 fi
 
+# RQT removed - not working
 # Optionally launch rqt EEG visualization plugin in container
 RUN_RQT="${RUN_RQT:-0}"
 if [ "$RUN_RQT" -eq 1 ]; then
-    echo "Launching rqt EEG visualization plugin in Docker container..."
-    docker build -t ros2-rqt "$WORKSPACE" || { echo "Docker build failed"; exit 1; }
+    echo "⚠️  RQT visualization is disabled - use web dashboard instead"
+    # docker build -t ros2-rqt "$WORKSPACE" || { echo "Docker build failed"; exit 1; }
     xhost +local:root
     docker run -it --rm \
         -v /tmp/.X11-unix:/tmp/.X11-unix \

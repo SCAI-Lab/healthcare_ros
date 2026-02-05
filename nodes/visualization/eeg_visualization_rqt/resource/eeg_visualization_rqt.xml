@@ -1,8 +1,0 @@
-<?xml version="1.0"?>
-<rqt_gui>
-  <class_type>eeg_visualization_rqt.eeg_visualization_widget.EEGVisualizationPlugin</class_type>
-  <class_name>EEG Visualization</class_name>
-  <description>Visualize raw and preprocessed EEG data side-by-side in real-time</description>
-  <icon type="default"/>
-  <statustip>Real-time EEG preprocessing visualization plugin</statustip>
-</rqt_gui>

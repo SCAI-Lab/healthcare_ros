@@ -27,7 +27,7 @@ services:
       - "8080:80"
       - "8443:443"
     volumes:
-      - ./nodes/visualization/influxdb_realtime_dashboard.html:/usr/share/nginx/html/index.html:ro
+      - ./nodes/visualization/dashboard/influxdb_realtime_dashboard.html:/usr/share/nginx/html/index.html:ro
       - ./nodes/visualization:/usr/share/nginx/html/visualization:ro
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
