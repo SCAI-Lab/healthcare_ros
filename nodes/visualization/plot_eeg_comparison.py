@@ -1,6 +1,50 @@
+#!/usr/bin/env python3
+"""
+EEG Comparison Visualization - Offline Plotting Tool
+
+Generates comparison plots of raw vs preprocessed EEG data from JSONL files.
+Useful for validating preprocessing quality and visualizing EEG signal characteristics.
+
+Features:
+- Side-by-side comparison of raw and processed signals
+- Multi-channel plotting (default: 4 channels - FP1, FP2, F3, F4)
+- Configurable time windows (default: 10 seconds)
+- Auto-numbering of output SVG files
+- High-quality vector graphics (SVG format)
+
+Data Source:
+- Raw data: eeg_data/eeg_raw_data.jsonl
+- Preprocessed data: eeg_data/eeg_preprocessed_data.jsonl
+
+Output:
+- Plots saved to: plots/eeg_comparison_XXX.svg
+- Auto-increments file numbers to avoid overwrites
+
+Usage:
+    # Basic usage (plots first 10 seconds of all 4 channels):
+    python3 plot_eeg_comparison.py
+    
+    # Via start.sh:
+    VISUALIZATION_MODE=comparison ./launch/start.sh
+    
+Configuration:
+- channels_to_plot: [0, 1, 2, 3] for all channels or subset like [0, 2]
+- seconds_to_plot: Duration to plot (default: 10s)
+- sampling_rate: Should match simulator/hardware (default: 150 Hz)
+
+Requirements:
+    matplotlib, numpy, json (all available in hcmd-venv)
+"""
+
+import os
+import json
+import numpy as np
+import matplotlib.pyplot as plt
+
 def get_next_plot_number(plots_dir):
     """
     Find the next available plot number by checking existing files.
+    Returns incremented number to avoid overwriting plots.
     """
     if not os.path.exists(plots_dir):
         os.makedirs(plots_dir)
@@ -24,7 +68,14 @@ def get_next_plot_number(plots_dir):
 def plot_selected_channels(times, raw_eeg, preprocessed_eeg, channel_names, channels_to_plot, save_path=None):
     """
     Plot raw and preprocessed EEG data for selected channels.
-    If save_path is provided, saves the figure instead of showing it.
+    
+    Args:
+        times: Time array in seconds
+        raw_eeg: List of raw EEG data arrays (one per channel)
+        preprocessed_eeg: List of preprocessed EEG data arrays (one per channel)
+        channel_names: List of channel names (e.g., ['FP1', 'FP2', 'F3', 'F4'])
+        channels_to_plot: Indices of channels to plot
+        plt.title(f'Channel {channel_names[ch]} (Sampling Rate: 150 Hz)', fontsize=18, fontweight='bold')
     """
     plt.figure(figsize=(15, 8))
     for idx, ch in enumerate(channels_to_plot):
@@ -46,12 +97,23 @@ def plot_selected_channels(times, raw_eeg, preprocessed_eeg, channel_names, chan
     else:
         plt.show()
 
-def plot_raw_vs_preprocessed(raw_data_path, preprocessed_data_path, channels_to_plot, seconds_to_plot=10, sampling_rate=256, num_channels=4, channel_names=None, save_path=None):
+def plot_raw_vs_preprocessed(raw_data_path, preprocessed_data_path, channels_to_plot, seconds_to_plot=10, sampling_rate=150, num_channels=4, channel_names=None, save_path=None):
     """
-    Load data and plot raw vs preprocessed for selected channels and time window.
-    Reads raw data from raw_data_path and preprocessed data from preprocessed_data_path.
-    Each line in the JSONL files should have 'eeg' field as a flat list that needs reshaping.
-    If save_path is provided, saves the plot instead of displaying it.
+    Load JSONL data files and generate comparison plots.
+    
+    Args:
+        raw_data_path: Path to raw EEG JSONL file
+        preprocessed_data_path: Path to preprocessed EEG JSONL file
+        channels_to_plot: List of channel indices to plot (e.g., [0, 1, 2, 3])
+        seconds_to_plot: Duration of data to plot (default: 10 seconds)
+        sampling_rate: EEG sampling rate in Hz (default: 150 Hz)
+        num_channels: Total number of EEG channels (default: 4)
+        channel_names: List of channel names (default: ['FP1', 'FP2', 'F3', 'F4'])
+        save_path: If provided, saves plot as SVG to this path
+        
+    Note:
+        JSONL format: Each line is a JSON object with 'eeg' (flat list) and 'sample_size' fields.
+        The 'eeg' field is reshaped to (num_channels x sample_size) for processing.
     """
     channel_names = channel_names or ['FP1', 'FP2', 'F3', 'F4']
     samples_to_plot = sampling_rate * seconds_to_plot

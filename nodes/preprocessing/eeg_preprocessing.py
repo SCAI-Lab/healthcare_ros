@@ -117,14 +117,42 @@ from healthcare_msgs.msg import EEG, EEGInfo  # Importing EEG and EEGInfo messag
 
 class EEGPreprocessor(Node):
     """
-    ROS2 node for non-interactive EEG preprocessing.
+    ROS2 node for real-time EEG preprocessing at 150 Hz.
 
-    Subscribes to /eeg/raw (healthcare_msgs.msg.EEG), applies band-pass filtering,
-    common average referencing, downsampling, and rounding, then publishes processed data to /eeg/processed (configurable).
+    Subscribes to /eeg/raw (healthcare_msgs.msg.EEG), applies clinical-grade signal processing,
+    and publishes to /eeg/processed.
+
+    Signal Processing Pipeline:
+    1. Bandpass filter (0.5-45 Hz) - Remove DC drift and high-frequency noise
+    2. Notch filter (50/60 Hz) - Remove powerline interference
+    3. Common Average Reference (CAR) - Spatial filtering across channels
+    4. Quality validation - Ensure signal quality before publishing
+
+    Features:
+    - 150 Hz sampling rate (configurable)
+    - 6-second circular buffer (900 samples) for stable filtering
+    - Per-channel processing with quality tracking
+    - Latched metadata publishing on /eeg/processed_info
+
+    Parameters (ROS2):
+    - sampling_rate: Input sampling rate (default: 150.0 Hz)
+    - lowcut: Highpass cutoff (default: 0.5 Hz)
+    - highcut: Lowpass cutoff (default: 45.0 Hz)
+    - notch_freq: Powerline frequency (default: 50.0 Hz)
+    - output_topic: Processed data topic (default: /eeg/processed)
+
+    Topics:
+    - Subscribes: /eeg/raw, /eeg/raw_info
+    - Publishes: /eeg/processed, /eeg/processed_info
+
+    Usage:
+        python3 eeg_preprocessing.py
+        # Or with custom parameters:
+        ros2 run healthcare_demo eeg_preprocessing --ros-args -p sampling_rate:=256.0
     """
     def __init__(self):
         """
-        Initialize EEGPreprocessor node, declare parameters, and set up publisher/subscriber.
+        Initialize EEGPreprocessor node with parameters, buffers, and ROS2 communication.
         """
         super().__init__("eeg_preprocessor")
 

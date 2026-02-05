@@ -1,7 +1,35 @@
 #!/usr/bin/env python3
 """
-Generate dashboard HTML with credentials from .env file.
-This ensures credentials are never hardcoded in tracked files.
+Dashboard Generator - Credential Injection Script
+
+Generates the InfluxDB real-time dashboard HTML file by injecting credentials from .env file
+into the template. This ensures credentials are never hardcoded in version-controlled files.
+
+Process:
+1. Reads credentials from .env file
+2. Loads HTML template from docs/influxdb_realtime_dashboard.template.html
+3. Replaces placeholders with actual credentials
+4. Writes generated dashboard to docs/influxdb_realtime_dashboard.html (git-ignored)
+
+Security:
+- Template is tracked in git (no credentials)
+- Generated dashboard contains credentials but is git-ignored
+- .env file is also git-ignored (or can be encrypted with scripts/encrypt_credentials.py)
+
+Usage:
+    python3 generate_dashboard.py
+    
+    # After updating credentials:
+    nano .env
+    python3 generate_dashboard.py
+    docker restart healthcare-nginx
+
+Output:
+    docs/influxdb_realtime_dashboard.html - Ready to be served by Nginx as index.html
+
+See Also:
+    - PRODUCTION_DEPLOYMENT.md - Full deployment guide
+    - docs/setup/CREDENTIALS_SETUP.md - Credential setup instructions
 """
 import os
 import sys

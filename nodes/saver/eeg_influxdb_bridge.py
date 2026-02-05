@@ -2,27 +2,40 @@
 """
 EEG InfluxDB Bridge Node
 
-Subscribes to both /eeg/raw and /eeg/processed topics and writes data to InfluxDB
-for real-time visualization via InfluxDB Explorer UI.
+Bridges ROS2 EEG topics to InfluxDB time-series database for real-time web visualization.
+Subscribes to both /eeg/raw and /eeg/processed topics and writes data points with statistics.
 
-Stores:
-- Raw EEG samples in 'eeg_raw' measurement
-- Preprocessed EEG samples in 'eeg_preprocessed' measurement
-- Metadata from EEGInfo messages
+Features:
+- Real-time data streaming at 150 Hz sampling rate
+- Per-channel statistics: mean, min, max, frame_length
+- Supports both raw and preprocessed EEG streams
+- Batch writing for optimal performance (every 50 messages)
+- Docker-compatible (connects to containerized InfluxDB)
 
-Configuration via environment variables:
-- INFLUXDB_URL: InfluxDB server URL (default: http://localhost:8086)
-- INFLUXDB_TOKEN: Authentication token
+Data Storage:
+- Measurement: 'eeg_raw' - Raw EEG samples with statistics
+- Measurement: 'eeg_preprocessed' - Filtered EEG samples with statistics
+- Tags: channel (FP1, FP2, F3, F4), session_id
+- Fields: mean, min, max, frame_length per channel
+
+Configuration (environment variables or .env file):
+- INFLUXDB_URL: Server URL (default: http://localhost:8086)
+- INFLUXDB_TOKEN: Authentication token (required)
 - INFLUXDB_ORG: Organization name (default: healthcare)
 - INFLUXDB_BUCKET: Bucket name (default: eeg_data)
 
 Usage:
-    python3 eeg_influxdb_bridge.py
+    # Via start.sh with Docker:
+    USE_INFLUXDB=1 ./launch/start.sh
     
-    # Or with custom settings:
+    # Manual with custom settings:
     INFLUXDB_URL=http://localhost:8086 \
     INFLUXDB_TOKEN=your-token \
     python3 eeg_influxdb_bridge.py
+
+Web Dashboard:
+    Access at http://localhost:8080 (served by Nginx)
+    Dashboard refreshes at 150 Hz (6.67ms intervals)
 """
 
 import os

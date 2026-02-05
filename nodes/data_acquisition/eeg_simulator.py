@@ -2,13 +2,28 @@
 """
 EEG Data Simulator Node
 
-Publishes simulated EEG data to the /neurosity/eeg topic in the correct
-healthcare_msgs format. Useful for testing the eeg_saver without a physical device.
+Generates realistic 4-channel EEG data at 150 Hz sampling rate and publishes to /eeg/raw topic.
+Useful for testing and development without physical EEG hardware.
 
-Simulates 4 channels of EEG data with realistic brain signal characteristics:
-- Alpha waves (8-12 Hz)
-- Beta waves (13-30 Hz)
-- Theta waves (4-8 Hz)
+Features:
+- 150 Hz sampling rate (realistic for clinical EEG)
+- 30 samples per message at 5 Hz message rate (200ms intervals)
+- 4 channels: FP1, FP2, F3, F4 (frontal electrode positions)
+- Realistic brain signal characteristics:
+  * Alpha waves (8-12 Hz) - relaxed wakefulness
+  * Beta waves (13-30 Hz) - active thinking
+  * Theta waves (4-8 Hz) - drowsiness/meditation
+  * Delta waves (0.5-4 Hz) - deep sleep
+- Simulated quality metrics per channel (0.7-1.0)
+
+Topics:
+- /eeg/raw (healthcare_msgs/EEG): Raw EEG samples
+- /eeg/raw_info (healthcare_msgs/EEGInfo): Metadata (latched)
+
+Usage:
+    python3 eeg_simulator.py
+    # Or via start.sh:
+    USE_ACQUISITION=0 ./launch/start.sh
 """
 
 import math
