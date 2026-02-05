@@ -77,10 +77,11 @@ def generate_dashboard(template_path, output_path, env_vars):
     print(f"✅ Dashboard generated: {output_path}")
 
 def main():
-    project_root = Path(__file__).parent
+    # Navigate to project root from nodes/visualization/
+    project_root = Path(__file__).parent.parent.parent
     env_path = project_root / '.env'
-    template_path = project_root / 'docs' / 'influxdb_realtime_dashboard.template.html'
-    output_path = project_root / 'docs' / 'influxdb_realtime_dashboard.html'
+    template_path = Path(__file__).parent / 'influxdb_realtime_dashboard.template.html'
+    output_path = Path(__file__).parent / 'influxdb_realtime_dashboard.html'
     
     # Load environment variables
     env_vars = load_env_file(env_path)

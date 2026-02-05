@@ -1,441 +1,327 @@
-# Healthcare Messages Demonstration - EEG Pipeline
+# Healthcare EEG System - Docker Application
 
-**ROS2-based EEG data acquisition, preprocessing, and storage pipeline using `healthcare_msgs`**
+**ROS2-based EEG data acquisition, preprocessing, and real-time visualization using Docker**
 
-## Overview
+## 🚀 Quick Start
 
-This project demonstrates a complete EEG data processing pipeline using ROS2 and the `healthcare_msgs` package. It supports multiple EEG hardware devices, real-time preprocessing, flexible data storage, and visualization tools.
+### Prerequisites
+- Docker & Docker Compose
+- ROS2 Jazzy
+- Python 3.10+
 
-**Supported OS:** Linux (tested on Ubuntu with ROS2 Jazzy)
-
-## Quick Start
-
-### 1. Setup Credentials (Required for Web Dashboard)
-
-If you want to use the web-based real-time visualization, you **must** create a `.env` file:
+### 1. Configure Credentials
 
 ```bash
-cd ~/ros2_ws/src/healthcare_demo
-
-# Copy the example file
+# Copy example and edit with your credentials
 cp .env.example .env
-
-# Edit with your secure credentials
 nano .env
 ```
 
-**Important:** Change the default credentials! Your `.env` file should contain:
-
+**Required credentials:**
 ```bash
-# InfluxDB Admin Credentials
 INFLUXDB_ADMIN_USERNAME=admin
-INFLUXDB_ADMIN_PASSWORD=YourSecureP@ssw0rd!Here  # Min. 3 special characters
-
-# InfluxDB Configuration
+INFLUXDB_ADMIN_PASSWORD=YourSecurePassword123!
 INFLUXDB_ORG=healthcare
 INFLUXDB_BUCKET=eeg_data
-INFLUXDB_ADMIN_TOKEN=your-secure-t0ken!2026@api  # Min. 3 special characters
+INFLUXDB_ADMIN_TOKEN=your-secure-token-2026!
 ```
 
-**Security Options:**
-
-**Option 1: Plain .env (Quick Start)**
-```bash
-nano .env  # Edit credentials
-USE_INFLUXDB=1 bash launch/start.sh
-```
-
-**Option 2: Encrypted .env (Recommended for Production)**
-```bash
-# Encrypt your credentials
-python3 scripts/encrypt_credentials.py --setup
-# Enter master password when prompted
-
-# Use encrypted credentials
-ENCRYPTED_ENV=1 USE_INFLUXDB=1 bash launch/start.sh
-# Enter master password when prompted
-```
-
-**Security Requirements:**
-- Password must contain at least **3 special characters** (e.g., `!@#$%^&*`)
-- Never commit `.env` to git (already in `.gitignore`)
-- For encryption guide: See `ENCRYPTION_GUIDE.md`
-- For general security: See `CREDENTIALS_SETUP.md`
-
-### 2. Start the System
-
-### 2. Start the System
-
-#### Web-Based Real-Time Visualization (with InfluxDB + Nginx)
+### 2. Generate Dashboard
 
 ```bash
-cd ~/ros2_ws/src/healthcare_demo
-
-# IMPORTANT: Create .env file first (see step 1 above)
-# The system will NOT start without a valid .env file
-
-# Start with web dashboard
-USE_INFLUXDB=1 bash launch/start.sh
-
-# Access URLs:
-# - Real-Time Dashboard: http://localhost:8080
-# - InfluxDB UI: http://localhost:8086
-# - Login with credentials from your .env file
+python3 nodes/visualization/generate_dashboard.py
 ```
+
+### 3. Start Docker Services
+
+```bash
+docker-compose up -d
+```
+
+**Services started:**
+- **InfluxDB** on port 8086 (time-series database)
+- **Nginx** on port 8080 (web dashboard)
+
+### 4. Access Dashboard
+
+Open: **http://localhost:8080**
+
+---
+
+## 🏗️ Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    ROS2 Native Layer                     │
+│                                                          │
+│  EEG Simulator (150 Hz)                                 │
+│         ↓                                                │
+│  Preprocessing (0.5-45 Hz bandpass, CAR)                │
+│         ↓                                                │
+│  InfluxDB Bridge (writes statistics to DB)              │
+└─────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────┐
+│                   Docker Container Layer                 │
+│                                                          │
+│  ┌──────────────┐         ┌─────────────────┐          │
+│  │InfluxDB 2.8  │  ←───   │  Nginx (Alpine) │          │
+│  │Port 8086     │         │  Port 8080      │          │
+│  └──────────────┘         └─────────────────┘          │
+│                                   ↓                      │
+│                         Web Dashboard (150 Hz)          │
+│                    http://localhost:8080                │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Data Flow
+
+1. **EEG Simulator** generates 4-channel data at 150 Hz
+2. **Preprocessor** filters and applies CAR (Common Average Reference)
+3. **InfluxDB Bridge** writes statistics (mean, min, max, frame_length) to InfluxDB
+4. **Web Dashboard** queries InfluxDB and visualizes in real-time
+
+---
+
+## 📊 System Components
+
+### ROS2 Nodes (Native)
+
+| Node | Topic | Description |
+|------|-------|-------------|
+| **eeg_simulator** | `/eeg/raw` | 150 Hz 4-channel EEG generation |
+| **eeg_preprocessing** | `/eeg/processed` | 0.5-45 Hz bandpass + CAR |
+| **eeg_influxdb_bridge** | - | Writes to InfluxDB for web viz |
+
+### Docker Services
+
+| Service | Port | Purpose |
+|---------|------|---------|
+| **influxdb** | 8086 | Time-series database |
+| **nginx** | 8080, 8443 | Web server for dashboard |
+
+---
+
+## 🎮 Usage
+
+### Start Full System
+
+```bash
+# Start Docker containers
+docker-compose up -d
+
+# In separate terminals, start ROS2 nodes:
+
+# Terminal 1: Simulator
+python3 nodes/data_acquisition/eeg_simulator.py
+
+# Terminal 2: Preprocessing
+python3 nodes/preprocessing/eeg_preprocessing.py
+
+# Terminal 3: InfluxDB Bridge
+python3 nodes/saver/eeg_influxdb_bridge.py
+```
+
+### View Dashboard
+
+Open browser: **http://localhost:8080**
 
 **Features:**
-- ✨ 100ms refresh rate for smooth real-time visualization (10 Hz)
-- 📊 4-channel EEG waveforms at **150 Hz** (FP1, FP2, F3, F4)
-- 📈 2-second window showing all 300 samples (full resolution)
-- 🔄 Toggle between RAW and PREPROCESSED data
-- 🌐 Access from any device on your network
-- 🐳 Fully automated Docker Compose setup
-- 🔒 Secure credential management via `.env` file
+- Real-time 4-channel EEG visualization
+- 150 Hz refresh rate (6.67ms)
+- Statistics: mean, min, max, samples per channel
+- Toggle raw/preprocessed data
+- Live latency monitoring
 
-**Troubleshooting:**
-- If you get "ERROR: .env file not found", create it first (see step 1)
-- If you get "Missing required credentials", check your `.env` file format
-- See `CREDENTIALS_SETUP.md` for detailed help
-
-#### Local Simulator (No Web Dashboard - No .env Required)
+### Stop System
 
 ```bash
-cd ~/ros2_ws/src/healthcare_demo
+# Stop Docker containers
+docker-compose down
 
-# Start with simulator (no hardware needed, no .env required)
-bash launch/start.sh
-
-# Data saved to: eeg_data/eeg_raw_data.jsonl
+# Stop ROS2 nodes with Ctrl+C in each terminal
 ```
 
-#### Hardware Devices
+---
 
-```bash
-# OpenBCI Cyton Board
-USE_ACQUISITION=1 OPENBCI_PORT=/dev/ttyUSB0 bash launch/start.sh
-
-# Neurosity Crown
-USE_ACQUISITION=2 bash launch/start.sh
-```
-
-For detailed configuration, see [`launch/STARTUP_COMMANDS.md`](launch/STARTUP_COMMANDS.md).
-
-## Architecture
-
-### Pipeline Overview
-
-```
-┌─────────────────┐      ┌──────────────┐      ┌─────────────────┐
-│  Data Source    │─────▶│ Preprocessor │─────▶│   Savers        │
-│  (Acquisition)  │      │  (Optional)  │      │ (JSON/MCAP)     │
-└─────────────────┘      └──────────────┘      └─────────────────┘
-       │                        │                      │
-       ▼                        ▼                      ▼
-  /eeg/raw              /eeg/processed      ┌─────────────────────┐
-  /eeg/raw_info         /eeg/processed_info │  eeg_data/*.jsonl   │
-                                            │  rosbag_data/*.mcap │
-                                            └─────────────────────┘
-                                                      │
-                                                      ▼
-                                            ┌─────────────────────┐
-                                            │  Web Visualization  │
-                                            │  (Optional)         │
-                                            ├─────────────────────┤
-                                            │ InfluxDB:8086       │
-                                            │ Nginx:8080          │
-                                            │ Real-Time Dashboard │
-                                            └─────────────────────┘
-```
-
-### Components
-
-**1. Data Acquisition** (`nodes/data_acquisition/`)
-- **Simulator** - Synthetic EEG data for testing (`eeg_simulator.py`)
-- **Neurosity** - Neurosity Crown headset via ROS2 package (`neurosity_driver/`)
-- **OpenBCI** - OpenBCI Cyton board via ROS2 package (`openbci_driver/`)
-
-**2. Preprocessing** (`nodes/preprocessing/`)
-- **EEG Preprocessor** - Bandpass filtering (0.5-45 Hz) and Common Average Reference (CAR)
-
-**3. Data Savers** (`nodes/saver/`)
-- **JSON Saver** - Stores data in JSONL format with metadata (overwrites on startup)
-- **Rosbag Saver** - Records to MCAP format for ROS2 playback
-- **InfluxDB Bridge** - Real-time streaming to time-series database (optional, `USE_INFLUXDB=1`)
-
-**4. Visualization** (`nodes/visualization/`)
-- **Web Dashboard** - Real-time browser-based visualization (http://localhost:8080)
-- **RQT Plugin** - Real-time plotting GUI
-- **Offline Plotter** - Static comparison plots (auto-numbered, saves to `plots/`)
-
-### Standardized Topics
-
-| Topic | Message Type | QoS | Description |
-|-------|-------------|-----|-------------|
-| `/eeg/raw` | `healthcare_msgs/EEG` | Default | Raw EEG data from acquisition |
-| `/eeg/raw_info` | `healthcare_msgs/EEGInfo` | Latching | Raw data metadata |
-| `/eeg/processed` | `healthcare_msgs/EEG` | Default | Preprocessed EEG data |
-| `/eeg/processed_info` | `healthcare_msgs/EEGInfo` | Latching | Preprocessing metadata |
-
-**Latching QoS** ensures late subscribers receive metadata.
-
-## Installation
-
-### Prerequisites
-
-- ROS2 (Jazzy or compatible)
-- Python 3.10+
-- Linux (Ubuntu 22.04+ recommended)
-
-### Setup
-
-```bash
-cd ~/ros2_ws/src
-git clone <repository-url> -healthcare_demo
-cd -healthcare_demo
-./launch/start.sh
-```
-
-The script automatically:
-- Creates virtual environment (`~/hcmd-venv`)
-- Installs dependencies
-- Sources ROS2
-- Builds packages
-- Starts pipeline
-
-### Configuration
-
-**Neurosity Device:**
-```bash
-cp nodes/data_acquisition/neurosity_driver/.env.example nodes/data_acquisition/neurosity_driver/.env
-# Edit with your credentials
-```
-
-**OpenBCI Device:**
-```bash
-USE_ACQUISITION=1 OPENBCI_PORT=/dev/ttyUSB0 OPENBCI_CHANNELS=8 ./launch/start.sh
-```
-
-## Usage
+## 🔧 Configuration
 
 ### Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `USE_ACQUISITION` | `0` | Data source: 0=simulator, 1=OpenBCI, 2=Neurosity |
-| `OPENBCI_PORT` | `/dev/ttyUSB0` | Serial port for OpenBCI |
-| `OPENBCI_CHANNELS` | `8` | OpenBCI channels (8 or 16) |
-| `USE_INFLUXDB` | `0` | Set to 1 to enable InfluxDB bridge for web visualization |
-| `RUN_TESTS` | `0` | Set to 1 to run tests |
-| `VENV_PATH` | `~/hcmd-venv` | Virtual environment path |
-| `VISUALIZATION_MODE` | `none` | `comparison` or `rqt` |
-
-### Common Commands
+Edit `.env` file:
 
 ```bash
-# Start with different data sources
-USE_ACQUISITION=0 ./launch/start.sh  # Simulator
-USE_ACQUISITION=1 ./launch/start.sh  # OpenBCI
-USE_ACQUISITION=2 ./launch/start.sh  # Neurosity
+# InfluxDB Configuration
+INFLUXDB_ADMIN_USERNAME=admin
+INFLUXDB_ADMIN_PASSWORD=YourPassword
+INFLUXDB_ORG=healthcare
+INFLUXDB_BUCKET=eeg_data
+INFLUXDB_ADMIN_TOKEN=your-token
 
-# Enable real-time web visualization with InfluxDB
-USE_INFLUXDB=1 ./launch/start.sh
-
-# Run tests
-RUN_TESTS=1 RUN_NODE=0 ./launch/start.sh
-
-# With visualization
-VISUALIZATION_MODE=rqt ./launch/start.sh
-VISUALIZATION_MODE=comparison ./launch/start.sh
-
-# Monitor logs
-tail -f logs/eeg_simulator.log
-tail -f logs/eeg_json_saver_raw.log
-tail -f logs/eeg_preprocessor.log
-
-# View data
-head -3 eeg_data/eeg_raw_data.jsonl | python3 -m json.tool
-cat eeg_data/eeg_raw_data.info.json
-
-# Stop all nodes
-kill $(cat logs/*.pid)
+# InfluxDB Connection (for bridge)
+INFLUXDB_URL=http://localhost:8086
 ```
 
-## Data Format
+### Docker Ports
 
-### JSONL Files
+Edit `docker-compose.yml` to change ports:
 
-```json
-{
-  "header": {
-    "stamp": {"sec": 1234567890, "nanosec": 123456789},
-    "frame_id": "eeg_sensor"
-  },
-  "session_id": "session_uuid",
-  "sample_size": 64,
-  "eeg": [/* flattened array: channels * samples */],
-  "quality": [0.95, 0.92, 0.88, 0.90]
-}
+```yaml
+nginx:
+  ports:
+    - "8080:80"   # HTTP: Change left side
+    - "8443:443"  # HTTPS: Change left side
 ```
 
-### Metadata (.info.json)
+---
 
-```json
-{
-  "channel_size": 4,
-  "sampling_rate": 150.0,
-  "channel_location": ["Fp1", "Fp2", "F3", "F4"],
-  "unit": "microvolts",
-  "device_info": {
-    "session_id": "session_uuid",
-    "device_id": "device_name"
-  },
-  "selected_preprocessing": [4]
-}
-```
-
-## Testing
-
-### Run All Tests
-```bash
-RUN_TESTS=1 RUN_NODE=0 ./launch/start.sh
-```
-
-### Test Suites
-
-**Unit Tests** (15 tests):
-- Signal generation
-- JSONL format
-- Data validation
-- EEGInfo structure
-- Node imports
-
-**Integration Tests** (11 tests):
-- End-to-end pipeline
-- Data format/structure
-- Channel/sample consistency
-- Quality validation
-- Metadata verification
-
-## Data Acquisition
-
-### Simulator
-Generates synthetic 4-channel EEG with realistic brain signals (alpha, beta, theta waves).
-Located in `nodes/data_acquisition/eeg_simulator.py`.
-
-### Neurosity Crown
-WiFi connection via Neurosity SDK. Implemented as ROS2 package in `nodes/data_acquisition/neurosity_driver/`.
-Requires `.env` credentials in the driver package directory.
-
-### OpenBCI Cyton
-USB serial connection via ROS2 package in `nodes/data_acquisition/openbci_driver/`.
-Supports 8 or 16 channels (with Daisy board). Configured via ROS2 parameters.
-
-**Details:** See [`nodes/data_acquisition/README.md`](nodes/data_acquisition/README.md)
-
-## Visualization
-
-### Real-time (rqt)
-```bash
-VISUALIZATION_MODE=rqt ./launch/start.sh
-```
-
-### Offline Plotting
-```bash
-# Generate 2-second comparison plot (auto-numbered)
-python nodes/visualization/plot_eeg_comparison.py
-
-# Or start with visualization mode
-VISUALIZATION_MODE=comparison ./launch/start.sh
-```
-Plots are saved to `plots/eeg_comparison_NNN.png` with auto-incrementing numbers.
-
-**Details:** See [`nodes/visualization/README.md`](nodes/visualization/README.md)
-
-## Troubleshooting
-
-### Import Errors
-```bash
-source ~/hcmd-venv/bin/activate
-source /opt/ros/jazzy/setup.bash
-source ~/ros2_ws/install/setup.bash
-```
-
-### No Data Saved
-```bash
-# Check running nodes
-ps aux | grep -E "eeg_simulator|eeg_json_saver|eeg_preprocessing"
-
-# Check logs for errors
-grep -i error logs/*.log
-```
-
-### Build Failures
-```bash
-REBUILD=1 ./launch/start.sh
-```
-
-### Device Issues
-
-**Neurosity:**
-- Verify device powered and on WiFi
-- Check `.env` credentials
-- Test with simulator first
-
-**OpenBCI:**
-- Check USB: `ls -l /dev/ttyUSB*`
-- Add to dialout group: `sudo usermod -a -G dialout $USER`
-- Logout/login required
-
-## Development
-
-### Adding Data Sources
-
-1. Create `nodes/data_acquisition/new_device.py`
-2. Publish to `/eeg/raw` and `/eeg/raw_info` (latching QoS)
-3. Update `launch/start.sh`
-4. Add tests
-5. Document
-
-### Directory Structure
+## 📁 Project Structure
 
 ```
-├── config/                 # Configuration files
-├── eeg_data/              # Stored JSONL data
-├── launch/                # Launch scripts
-│   ├── start.sh
-│   └── STARTUP_COMMANDS.md
-├── logs/                  # Process logs
+.
+├── docker-compose.yml              # Docker services configuration
+├── .env                             # Credentials (git-ignored)
+├── .env.example                     # Credential template
 ├── nodes/
-│   ├── data_acquisition/  # Hardware drivers
-│   ├── preprocessing/     # Signal processing
-│   ├── saver/            # Data persistence
-│   └── visualization/    # Plotting tools
-├── tests/                # Test suites
-└── README.md
+│   ├── data_acquisition/
+│   │   └── eeg_simulator.py        # 150 Hz EEG simulator
+│   ├── preprocessing/
+│   │   └── eeg_preprocessing.py    # Signal processing
+│   ├── saver/
+│   │   └── eeg_influxdb_bridge.py  # InfluxDB writer
+│   └── visualization/
+│       ├── generate_dashboard.py   # Dashboard generator
+│       ├── influxdb_realtime_dashboard.template.html
+│       └── influxdb_realtime_dashboard.html
+├── nginx/                           # Nginx configuration
+├── logs/                            # Node logs
+└── eeg_data/                        # Recorded data (optional)
 ```
 
-## Dependencies
+---
 
-### Python Packages
-- numpy, scipy, matplotlib
-- mne (EEG analysis)
-- neurosity (Neurosity SDK)
-- openbci-python (OpenBCI SDK)
-- python-dotenv, pyyaml
+## 🛠️ Development
 
-### ROS2 Packages
-- rclpy
-- healthcare_msgs
-- rqt_gui
+### Regenerate Dashboard
 
-## License
+After changing credentials:
 
-Apache-2.0
+```bash
+python3 nodes/visualization/generate_dashboard.py
+docker restart healthcare-nginx
+```
 
-## References
+### View Logs
 
-- [ROS2 Documentation](https://docs.ros.org/)
-- [healthcare_msgs](https://github.com/ros-medical/healthcare_msgs)
-- [Neurosity SDK](https://docs.neurosity.co/)
-- [OpenBCI Docs](https://docs.openbci.com/)
+```bash
+# Docker logs
+docker logs influxdb -f
+docker logs healthcare-nginx -f
+
+# ROS2 node logs
+tail -f logs/eeg_simulator.log
+tail -f logs/eeg_preprocessing.log
+tail -f logs/eeg_influxdb_bridge.log
+```
+
+### Check Docker Status
+
+```bash
+docker ps
+docker-compose ps
+```
+
+---
+
+## 🔐 Security
+
+### Best Practices
+
+1. **Change default credentials** in `.env`
+2. **Use strong passwords** (min 12 characters, special chars)
+3. **Don't commit** `.env` to git (already in .gitignore)
+4. **Use HTTPS** in production (configure nginx/ssl/)
+
+### Production Deployment
+
+For production, the dashboard automatically adapts to your server:
+
+```javascript
+// Dashboard detects server IP automatically
+const INFLUXDB_URL = window.location.protocol + '//' + window.location.host;
+```
+
+**Access:** `http://your-server-ip:8080`  
+InfluxDB connection: `http://your-server-ip:8086`
+
+---
+
+## 📈 Performance
+
+- **Sampling Rate:** 150 Hz (realistic clinical EEG)
+- **Dashboard Refresh:** 6.67ms (150 Hz)
+- **Data Window:** 2 seconds (300 samples)
+- **Channels:** 4 (FP1, FP2, F3, F4)
+- **Latency:** < 10ms typical
+
+---
+
+## 🐛 Troubleshooting
+
+### Dashboard shows no data
+
+```bash
+# Check if InfluxDB is running
+curl http://localhost:8086/health
+
+# Check bridge logs
+tail -f logs/eeg_influxdb_bridge.log
+
+# Restart bridge
+pkill -f eeg_influxdb_bridge
+python3 nodes/saver/eeg_influxdb_bridge.py
+```
+
+### Docker container not starting
+
+```bash
+# Check logs
+docker logs influxdb
+docker logs healthcare-nginx
+
+# Restart containers
+docker-compose restart
+
+# Rebuild if needed
+docker-compose down
+docker-compose up -d
+```
+
+### Port already in use
+
+```bash
+# Check what's using port 8086 or 8080
+sudo netstat -tulpn | grep -E '8080|8086'
+
+# Stop conflicting service or change port in docker-compose.yml
+```
+
+---
+
+## 📝 License
+
+This project is part of the healthcare_ros system developed by SCAI-Lab.
+
+---
+
+## 🚀 Summary
+
+**This is a pure Docker application** for EEG data visualization:
+
+1. **Docker Compose** manages InfluxDB + Nginx
+2. **ROS2 nodes** run natively and write to InfluxDB
+3. **Web dashboard** served by Nginx at http://localhost:8080
+4. **No manual installation** of InfluxDB or Nginx required
+
+Just configure `.env`, run `docker-compose up -d`, start ROS2 nodes, and open the dashboard!
 

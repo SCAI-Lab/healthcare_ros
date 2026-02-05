@@ -1,117 +1,63 @@
-# EEG Visualization
+NA by EMail without the help of the documents 2# EEG Visualization
 
-This directory contains visualization tools for EEG data analysis.
+This folder contains all visualization tools for the EEG healthcare system.
 
-## Components
+## Web Dashboard (Real-time)
 
-### 1. RQT Plugin (eeg_visualization_rqt/)
-**Type:** ROS2 package - Interactive GUI plugin for rqt
+### Files
+- `influxdb_realtime_dashboard.template.html` - Dashboard template (tracked in git)
+- `influxdb_realtime_dashboard.html` - Generated dashboard with credentials (git-ignored)
+- `generate_dashboard.py` - Script to inject credentials into template
 
-**Purpose:** Real-time visualization of EEG data streams
+### Generate Dashboard
+
+```bash
+# From project root
+python3 nodes/visualization/generate_dashboard.py
+```
+
+This reads credentials from `.env` and generates the dashboard HTML.
+
+### Access Dashboard
+
+The dashboard is served by Nginx (Docker):
+- **URL:** http://localhost:8080
+- **Refresh Rate:** 150 Hz (6.67ms intervals)
+- **Data:** Real-time EEG from InfluxDB
 
 **Features:**
-- Side-by-side comparison of raw and preprocessed EEG signals
-- Live plotting with matplotlib embedded in Qt
-- Subscribes to `/eeg/raw` and `/eeg/processed` topics
-- Multi-channel display with configurable buffer size
+- 4-channel visualization (FP1, FP2, F3, F4)
+- Statistics per channel: mean, min, max, samples
+- Toggle between raw and preprocessed data
+- Live latency monitoring
 
-**Launch:**
+## Offline Plotting Tools
+
+### plot_eeg_comparison.py
+Generate comparison plots of raw vs preprocessed EEG data from JSONL files.
+
 ```bash
-# Via start.sh
-VISUALIZATION_MODE=rqt ./launch/start.sh
-
-# Or manually
-export RQT_PLUGIN_PATH="$PWD/nodes/visualization/eeg_visualization_rqt"
-rqt --standalone eeg_visualization_rqt
-```
-
-**Dependencies:**
-- ROS2 (rclpy, rqt_gui, rqt_gui_py)
-- Qt (python_qt_binding)
-- matplotlib
-- numpy
-- healthcare_msgs
-
-**Structure:**
-```
-eeg_visualization_rqt/
-├── package.xml          # ROS2 package manifest
-├── setup.py             # Python package setup
-├── resource/            # Plugin registration XML
-└── eeg_visualization_rqt/
-    ├── __init__.py
-    └── eeg_visualization_widget.py  # Main plugin implementation
-```
-
-### 2. Offline Comparison Plot (plot_eeg_comparison.py)
-**Type:** Standalone Python script
-
-**Purpose:** Generate static comparison plots from saved JSONL data files
-
-**Features:**
-- Loads data from `eeg_data/eeg_raw_data.jsonl` and `eeg_data/eeg_preprocessed_data.jsonl`
-- Plots selected channels for specified time window
-- Displays raw vs preprocessed signals side-by-side
-- Configurable sampling rate, channels, and duration
-
-**Usage:**
-```bash
-# Via start.sh
-VISUALIZATION_MODE=comparison ./launch/start.sh
-
-# Or manually
 python3 nodes/visualization/plot_eeg_comparison.py
 ```
 
-**Configuration:**
-Edit the script's `main()` function to customize:
-- `channels_to_plot` - Which EEG channels to display (default: [0, 1, 2, 3])
-- `seconds_to_plot` - Time window duration (default: 10 seconds)
-- `sampling_rate` - Data sampling frequency (default: 150 Hz)
-- `num_channels` - Total number of channels (default: 4)
-- `channel_names` - Channel labels (default: ['FP1', 'FP2', 'F3', 'F4'])
+**Output:** `plots/eeg_comparison_XXX.svg`
 
-**Dependencies:**
-- matplotlib
-- numpy
-- json
+### plot_eeg_offline.py
+Alternative offline plotting tool.
 
-## Visualization Modes
+## RQT Plugin (Optional)
 
-**Real-time (rqt):**
-- Best for: Live monitoring during data collection
-- Requires: Running ROS2 nodes publishing to `/eeg/raw` and `/eeg/processed`
-- Interactive: Can pause, zoom, pan
+The `eeg_visualization_rqt/` folder contains a ROS2 RQT plugin for live EEG visualization.
 
-**Offline (comparison plot):**
-- Best for: Post-processing analysis and quality checks
-- Requires: Existing JSONL data files in `eeg_data/`
-- Static: Generates matplotlib figure for inspection
+**Note:** Currently disabled (COLCON_IGNORE) - Use web dashboard for real-time visualization.
 
-## Adding New Visualizations
+---
 
-To add new visualization tools:
+## Docker Integration
 
-1. **For real-time ROS2 visualizations:**
-   - Create new ROS2 package in this directory
-   - Subscribe to relevant EEG topics
-   - Follow rqt plugin pattern if GUI needed
+The web dashboard is automatically served by the Nginx container defined in `docker-compose.yml`.
 
-2. **For offline analysis scripts:**
-   - Add standalone Python script to this directory
-   - Use `eeg_data/*.jsonl` as data source
-   - Document usage in this README
-
-## Topics Used
-
-- `/eeg/raw` (healthcare_msgs/EEG) - Raw EEG data from acquisition nodes
-- `/eeg/raw_info` (healthcare_msgs/EEGInfo) - Metadata for raw data
-- `/eeg/processed` (healthcare_msgs/EEG) - Preprocessed EEG data
-- `/eeg/processed_info` (healthcare_msgs/EEGInfo) - Metadata for preprocessed data
-
-## Notes
-
-- The rqt plugin is a ROS2 package and requires building with `colcon build`
-- Offline plotting script is standalone and doesn't require ROS2 runtime
-- Generated plots and images should not be committed to version control
-- For custom analysis, consider creating Jupyter notebooks in a separate `analysis/` directory
+**To update dashboard:**
+1. Edit `.env` credentials
+2. Run: `python3 nodes/visualization/generate_dashboard.py`
+3. Restart: `docker restart healthcare-nginx`
