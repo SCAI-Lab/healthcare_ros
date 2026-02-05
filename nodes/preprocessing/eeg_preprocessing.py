@@ -35,7 +35,7 @@ l_freq : float, default=0.5
     Low frequency cutoff for bandpass filter (Hz)
 h_freq : float, default=45.0
     High frequency cutoff for bandpass filter (Hz)
-sampling_rate : float, default=256.0
+sampling_rate : float, default=150.0
     Sampling frequency in Hz
 downsample_factor : int, default=1
     Downsampling factor (1=no downsampling)
@@ -132,7 +132,7 @@ class EEGPreprocessor(Node):
         # Bandpass filtering is always enabled
         self.declare_parameter("l_freq", 0.5)  # Low frequency cutoff (Hz)
         self.declare_parameter("h_freq", 45.0) # High frequency cutoff (Hz)
-        self.declare_parameter("sampling_rate", 256.0)
+        self.declare_parameter("sampling_rate", 150.0)  # Updated to realistic 150 Hz
         self.declare_parameter("downsample_factor", 1)
         self.declare_parameter("round_precision", 3)
         self.declare_parameter("publish_topic", "/eeg/processed")
@@ -148,7 +148,7 @@ class EEGPreprocessor(Node):
         self.buffer_duration = float(self.get_parameter("buffer_duration").value)
 
         # Initialize data buffer for temporal filtering
-        # We need enough samples for proper filtering (e.g., 2 seconds = 512 samples at 256 Hz)
+        # We need enough samples for proper filtering (e.g., 2 seconds = 300 samples at 150 Hz)
         self.buffer_size = int(self.buffer_duration * self.sampling_rate)
         self.data_buffer = []  # List of (eeg_array, msg) tuples
         self.num_channels = None

@@ -80,10 +80,11 @@
                 <span class="channel-name">FP1</span>
                 <div class="channel-stats">
                     <div class="stat"><span class="stat-label">Mean</span><span class="stat-value" id="mean-FP1">0.0</span></div>
-                    <div class="stat"><span class="stat-label">Quality</span><span class="stat-value" id="quality-FP1">0%</span></div>
+                    <div class="stat"><span class="stat-label">Min</span><span class="stat-value" id="min-FP1">0.0</span></div>
+                    <div class="stat"><span class="stat-label">Max</span><span class="stat-value" id="max-FP1">0.0</span></div>
+                    <div class="stat"><span class="stat-label">Samples</span><span class="stat-value" id="frame-FP1">0</span></div>
                 </div>
             </div>
-            <div class="quality-bar"><div class="quality-fill" id="quality-bar-FP1" style="width: 0%"></div></div>
             <div class="chart-container"><canvas id="chart-FP1"></canvas></div>
         </div>
 
@@ -92,10 +93,11 @@
                 <span class="channel-name">FP2</span>
                 <div class="channel-stats">
                     <div class="stat"><span class="stat-label">Mean</span><span class="stat-value" id="mean-FP2">0.0</span></div>
-                    <div class="stat"><span class="stat-label">Quality</span><span class="stat-value" id="quality-FP2">0%</span></div>
+                    <div class="stat"><span class="stat-label">Min</span><span class="stat-value" id="min-FP2">0.0</span></div>
+                    <div class="stat"><span class="stat-label">Max</span><span class="stat-value" id="max-FP2">0.0</span></div>
+                    <div class="stat"><span class="stat-label">Samples</span><span class="stat-value" id="frame-FP2">0</span></div>
                 </div>
             </div>
-            <div class="quality-bar"><div class="quality-fill" id="quality-bar-FP2" style="width: 0%"></div></div>
             <div class="chart-container"><canvas id="chart-FP2"></canvas></div>
         </div>
 
@@ -104,10 +106,11 @@
                 <span class="channel-name">F3</span>
                 <div class="channel-stats">
                     <div class="stat"><span class="stat-label">Mean</span><span class="stat-value" id="mean-F3">0.0</span></div>
-                    <div class="stat"><span class="stat-label">Quality</span><span class="stat-value" id="quality-F3">0%</span></div>
+                    <div class="stat"><span class="stat-label">Min</span><span class="stat-value" id="min-F3">0.0</span></div>
+                    <div class="stat"><span class="stat-label">Max</span><span class="stat-value" id="max-F3">0.0</span></div>
+                    <div class="stat"><span class="stat-label">Samples</span><span class="stat-value" id="frame-F3">0</span></div>
                 </div>
             </div>
-            <div class="quality-bar"><div class="quality-fill" id="quality-bar-F3" style="width: 0%"></div></div>
             <div class="chart-container"><canvas id="chart-F3"></canvas></div>
         </div>
 
@@ -116,8 +119,12 @@
                 <span class="channel-name">F4</span>
                 <div class="channel-stats">
                     <div class="stat"><span class="stat-label">Mean</span><span class="stat-value" id="mean-F4">0.0</span></div>
-                    <div class="stat"><span class="stat-label">Quality</span><span class="stat-value" id="quality-F4">0%</span></div>
+                    <div class="stat"><span class="stat-label">Min</span><span class="stat-value" id="min-F4">0.0</span></div>
+                    <div class="stat"><span class="stat-label">Max</span><span class="stat-value" id="max-F4">0.0</span></div>
+                    <div class="stat"><span class="stat-label">Samples</span><span class="stat-value" id="frame-F4">0</span></div>
                 </div>
+            </div>
+            <div class="chart-container"><canvas id="chart-F4"></canvas></div>
             </div>
             <div class="quality-bar"><div class="quality-fill" id="quality-bar-F4" style="width: 0%"></div></div>
             <div class="chart-container"><canvas id="chart-F4"></canvas></div>
@@ -134,8 +141,8 @@
         const INFLUXDB_TOKEN = 'INFLUXDB_TOKEN_PLACEHOLDER';
         const INFLUXDB_ORG = 'INFLUXDB_ORG_PLACEHOLDER';
         const INFLUXDB_BUCKET = 'INFLUXDB_BUCKET_PLACEHOLDER';
-        const REFRESH_INTERVAL = 50;
-        const MAX_DATA_POINTS = 300;
+        const REFRESH_INTERVAL = 6.67; // Update every 6.67ms for 150 Hz refresh (1000ms / 150 = 6.67ms)
+        const MAX_DATA_POINTS = 300;  // 2 seconds at 150 Hz = 300 samples
         
         const CHANNELS = ['FP1', 'FP2', 'F3', 'F4'];
         const CHANNEL_MAP = { 'FP1': ['FP1', 'CH1'], 'FP2': ['FP2', 'CH2'], 'F3': ['F3', 'CH3'], 'F4': ['F4', 'CH4'] };
@@ -205,9 +212,9 @@
             const measurement = currentStream === 'raw' ? 'eeg_raw' : 'eeg_preprocessed';
             
             const query = `from(bucket: "${INFLUXDB_BUCKET}")
-  |> range(start: -3s)
+  |> range(start: -2s)
   |> filter(fn: (r) => r["_measurement"] == "${measurement}")
-  |> filter(fn: (r) => r["_field"] == "mean" or r["_field"] == "quality")
+  |> filter(fn: (r) => r["_field"] == "mean" or r["_field"] == "min" or r["_field"] == "max" or r["_field"] == "frame_length")
   |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
   |> group(columns: ["channel"])
   |> sort(columns: ["_time"])`;
@@ -251,7 +258,9 @@
             const timeIdx = header.indexOf('_time');
             const channelIdx = header.indexOf('channel');
             const meanIdx = header.indexOf('mean');
-            const qualityIdx = header.indexOf('quality');
+            const minIdx = header.indexOf('min');
+            const maxIdx = header.indexOf('max');
+            const frameLengthIdx = header.indexOf('frame_length');
 
             const channelData = {};
             
@@ -275,10 +284,12 @@
 
                 const timestamp = new Date(cols[timeIdx]);
                 const mean = parseFloat(cols[meanIdx]) || 0;
-                const quality = parseFloat(cols[qualityIdx]) || 0;
+                const min = parseFloat(cols[minIdx]) || 0;
+                const max = parseFloat(cols[maxIdx]) || 0;
+                const frameLength = parseInt(cols[frameLengthIdx]) || 0;
 
                 if (!channelData[channel]) channelData[channel] = [];
-                channelData[channel].push({ time: timestamp, mean: mean, quality: quality });
+                channelData[channel].push({ time: timestamp, mean: mean, min: min, max: max, frameLength: frameLength });
             }
 
             CHANNELS.forEach(channel => {
@@ -288,8 +299,9 @@
                 const latest = channelData[channel][channelData[channel].length - 1];
                 
                 document.getElementById(`mean-${channel}`).textContent = latest.mean.toFixed(1);
-                document.getElementById(`quality-${channel}`).textContent = `${(latest.quality * 100).toFixed(0)}%`;
-                document.getElementById(`quality-bar-${channel}`).style.width = `${latest.quality * 100}%`;
+                document.getElementById(`min-${channel}`).textContent = latest.min.toFixed(1);
+                document.getElementById(`max-${channel}`).textContent = latest.max.toFixed(1);
+                document.getElementById(`frame-${channel}`).textContent = latest.frameLength;
 
                 const chart = charts[channel];
                 const existingTimes = new Set(chart.data.labels);

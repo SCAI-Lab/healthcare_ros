@@ -198,16 +198,16 @@ class EEGInfluxDBBridge(Node):
             self.get_logger().error(f'Failed to write metadata: {e}')
     
     def _write_eeg_data(self, msg: EEG, measurement: str, channel_names: list):
-        """Write EEG samples to InfluxDB."""
+        """Write EEG samples to InfluxDB with statistics (mean, min, max, frame length)."""
         try:
             # Extract timestamp from ROS message
             timestamp_ns = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec
             
-            # Calculate number of channels and samples per channel
-            num_channels = len(msg.quality) if msg.quality else 0
-            if num_channels == 0:
+            # Calculate number of channels from sample_size and data length
+            if not msg.eeg or msg.sample_size == 0:
                 return
             
+            num_channels = len(msg.eeg) // msg.sample_size
             samples_per_channel = msg.sample_size
             
             # Use channel names from metadata if available, otherwise use generic names
@@ -220,7 +220,6 @@ class EEGInfluxDBBridge(Node):
             
             for ch_idx in range(num_channels):
                 channel_name = channel_names[ch_idx]
-                quality = msg.quality[ch_idx] if ch_idx < len(msg.quality) else 0.0
                 
                 # Extract this channel's samples from flattened array
                 start_idx = ch_idx * samples_per_channel
@@ -232,8 +231,9 @@ class EEGInfluxDBBridge(Node):
                     mean_value = sum(channel_samples) / len(channel_samples)
                     min_value = min(channel_samples)
                     max_value = max(channel_samples)
+                    frame_length = len(channel_samples)
                     
-                    # Create point with channel data
+                    # Create point with channel data and statistics
                     point = Point(measurement) \
                         .tag('channel', channel_name) \
                         .tag('session_id', msg.session_id) \
@@ -241,13 +241,8 @@ class EEGInfluxDBBridge(Node):
                         .field('mean', float(mean_value)) \
                         .field('min', float(min_value)) \
                         .field('max', float(max_value)) \
-                        .field('quality', float(quality)) \
-                        .field('sample_count', samples_per_channel) \
+                        .field('frame_length', frame_length) \
                         .time(timestamp_ns)
-                    
-                    # Optionally store all samples (can be large - comment out if needed)
-                    # for sample_idx, sample_value in enumerate(channel_samples):
-                    #     point = point.field(f'sample_{sample_idx}', float(sample_value))
                     
                     points.append(point)
             

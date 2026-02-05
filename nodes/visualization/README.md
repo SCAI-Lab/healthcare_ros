@@ -67,7 +67,7 @@ python3 nodes/visualization/plot_eeg_comparison.py
 Edit the script's `main()` function to customize:
 - `channels_to_plot` - Which EEG channels to display (default: [0, 1, 2, 3])
 - `seconds_to_plot` - Time window duration (default: 10 seconds)
-- `sampling_rate` - Data sampling frequency (default: 256 Hz)
+- `sampling_rate` - Data sampling frequency (default: 150 Hz)
 - `num_channels` - Total number of channels (default: 4)
 - `channel_names` - Channel labels (default: ['FP1', 'FP2', 'F3', 'F4'])
 

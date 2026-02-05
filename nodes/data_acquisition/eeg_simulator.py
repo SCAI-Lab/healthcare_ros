@@ -30,11 +30,11 @@ class EEGSimulator(Node):
         self.eeg_info_pub = self.create_publisher(EEGInfo, '/eeg/raw_info', qos_profile=info_qos)
         
         # Simulation parameters
-        self.sampling_rate = 256  # Hz
+        self.sampling_rate = 150  # Hz (realistic EEG sampling rate)
         self.num_channels = 4
         self.channel_names = ['FP1', 'FP2', 'F3', 'F4']
-        self.samples_per_message = 64  # samples per message
-        self.message_interval = self.samples_per_message / self.sampling_rate
+        self.samples_per_message = 30  # samples per message (150Hz / 5 msg/sec = 30 samples)
+        self.message_interval = self.samples_per_message / self.sampling_rate  # 0.2s = 5 Hz message rate
         
         # Oscillation parameters for realistic brain signals
         self.time_offset = 0.0

@@ -363,7 +363,7 @@ To access InfluxDB from other machines:
 ## Performance Notes
 
 - **Data Volume**: With default settings (statistics only), ~1KB per message
-- **Storage**: ~3.6 MB/hour for 4 channels at 256 Hz (10 messages/sec)
+- **Storage**: ~2.1 MB/hour for 4 channels at 150 Hz (5 messages/sec)
 - **Latency**: <10ms typical write latency
 - **Retention**: Default 30 days, configurable per bucket
 

@@ -93,7 +93,7 @@ The bridge writes both **raw** and **preprocessed** EEG data:
 
 ```
 ┌─────────────────┐
-│  EEG Simulator  │ (256 Hz, 4 channels)
+│  EEG Simulator  │ (150 Hz, 4 channels)
 └────────┬────────┘
          │
          ├─────────→ /eeg/raw ─────────┐
@@ -217,7 +217,7 @@ docker cp influxdb:/tmp/backup ./influxdb_backup
 
 - **Write Latency**: ~5-10ms per batch
 - **Data Rate**: ~10 messages/second
-- **Storage**: ~3.6 MB/hour (4 channels, 256 Hz)
+- **Storage**: ~2.1 MB/hour (4 channels, 150 Hz)
 - **Memory Usage**: ~87 MB (bridge process)
 - **CPU Usage**: ~4% (on idle system)
 

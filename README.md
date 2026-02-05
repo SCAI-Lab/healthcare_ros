@@ -84,8 +84,9 @@ USE_INFLUXDB=1 bash launch/start.sh
 ```
 
 **Features:**
-- ✨ 50ms refresh rate for smooth real-time visualization
-- 📊 4-channel EEG waveforms (FP1, FP2, F3, F4)
+- ✨ 100ms refresh rate for smooth real-time visualization (10 Hz)
+- 📊 4-channel EEG waveforms at **150 Hz** (FP1, FP2, F3, F4)
+- 📈 2-second window showing all 300 samples (full resolution)
 - 🔄 Toggle between RAW and PREPROCESSED data
 - 🌐 Access from any device on your network
 - 🐳 Fully automated Docker Compose setup
@@ -281,7 +282,7 @@ kill $(cat logs/*.pid)
 ```json
 {
   "channel_size": 4,
-  "sampling_rate": 256.0,
+  "sampling_rate": 150.0,
   "channel_location": ["Fp1", "Fp2", "F3", "F4"],
   "unit": "microvolts",
   "device_info": {

@@ -79,8 +79,8 @@ def process_eeg(self, data, num_channels, num_samples, fs):
     Examples
     --------
     >>> preprocessor = EEGPreprocessor()
-    >>> data = [1.0, 2.0, ...] * 256  # 4 channels, 64 samples each
-    >>> processed = preprocessor.process_eeg(data, 4, 64, 256.0)
+    >>> data = [1.0, 2.0, ...] * 150  # 4 channels, 30 samples each
+    >>> processed = preprocessor.process_eeg(data, 4, 30, 150.0)
     >>> processed.shape
     (4, 64)
     """
@@ -231,7 +231,7 @@ def get_next_plot_number(plots_dir):
 ```python
 def plot_raw_vs_preprocessed(raw_data_path, preprocessed_data_path, 
                             channels_to_plot, seconds_to_plot=10, 
-                            sampling_rate=256, num_channels=4, 
+                            sampling_rate=150, num_channels=4, 
                             channel_names=None, save_path=None):
     """
     Generate comparison plots of raw vs preprocessed EEG data.
@@ -250,7 +250,7 @@ def plot_raw_vs_preprocessed(raw_data_path, preprocessed_data_path,
     seconds_to_plot : float, optional
         Duration of data to plot in seconds (default: 10)
     sampling_rate : float, optional
-        Sampling frequency in Hz (default: 256)
+        Sampling frequency in Hz (default: 150)
     num_channels : int, optional
         Total number of channels in data (default: 4)
     channel_names : list of str, optional
@@ -337,7 +337,7 @@ def apply_bandpass_filter(self, raw, l_freq, h_freq, sfreq):
     Examples
     --------
     >>> tools = EEGPreprocessingTools()
-    >>> filtered = tools.apply_bandpass_filter(raw, 0.5, 45.0, 256.0)
+    >>> filtered = tools.apply_bandpass_filter(raw, 0.5, 45.0, 150.0)
     """
 ```
 
