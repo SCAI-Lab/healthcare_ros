@@ -40,7 +40,8 @@ def load_env_file(env_path):
     env_vars = {}
     if not env_path.exists():
         print(f"ERROR: .env file not found at {env_path}")
-        print("Please copy .env.example to .env and configure your credentials.")
+        print("Please decrypt credentials first:")
+        print("  python3 scripts/encrypt_credentials_multi.py --decrypt")
         sys.exit(1)
     
     with open(env_path, 'r') as f:
@@ -79,7 +80,7 @@ def generate_dashboard(template_path, output_path, env_vars):
 def main():
     # Navigate to project root from nodes/visualization/
     project_root = Path(__file__).parent.parent.parent
-    env_path = project_root / '.env'
+    env_path = project_root / 'env_credentials' / '.env.influxdb'
     template_path = Path(__file__).parent / 'influxdb_realtime_dashboard.template.html'
     output_path = Path(__file__).parent / 'influxdb_realtime_dashboard.html'
     
@@ -89,7 +90,7 @@ def main():
     # Generate dashboard
     generate_dashboard(template_path, output_path, env_vars)
     
-    print(f"✅ Using credentials from .env:")
+    print(f"✅ Using credentials from env_credentials/.env.influxdb:")
     print(f"   - Token: {env_vars.get('INFLUXDB_ADMIN_TOKEN', 'N/A')[:20]}...")
     print(f"   - Org: {env_vars.get('INFLUXDB_ORG', 'N/A')}")
     print(f"   - Bucket: {env_vars.get('INFLUXDB_BUCKET', 'N/A')}")

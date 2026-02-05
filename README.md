@@ -91,7 +91,7 @@ Open: **http://localhost:8080**
 |------|-------|-------------|
 | **eeg_simulator** | `/eeg/raw` | 150 Hz 4-channel EEG generation |
 | **eeg_preprocessing** | `/eeg/processed` | 0.5-45 Hz bandpass + CAR |
-| **eeg_influxdb_bridge** | - | Writes to InfluxDB for web viz |
+| **eeg_influxdb_bridge** | - | Writes to InfluxDB for web viz<br/>**Auto-cleanup: Keeps only last 5 minutes** |
 
 ### Docker Services
 
@@ -157,6 +157,9 @@ INFLUXDB_ADMIN_PASSWORD=YourPassword
 INFLUXDB_ORG=healthcare
 INFLUXDB_BUCKET=eeg_data
 INFLUXDB_ADMIN_TOKEN=your-token
+
+# Data Retention (Production - prevents database from filling up)
+INFLUXDB_RETENTION_MINUTES=5  # Auto-delete data older than 5 minutes
 
 # InfluxDB Connection (for bridge)
 INFLUXDB_URL=http://localhost:8086

@@ -364,7 +364,7 @@ if [ "$USE_INFLUXDB" -eq 1 ] && [ "$MANAGE_DOCKER" -eq 1 ]; then
         
         # Generate dashboard with credentials
         echo "Generating dashboard with credentials..."
-        python3 "$PROJECT_ROOT/generate_dashboard.py" || {
+        python3 "$PROJECT_ROOT/nodes/visualization/generate_dashboard.py" || {
             echo "❌ ERROR: Failed to generate dashboard."
             echo "Please check generate_dashboard.py and your .env file."
             exit 1

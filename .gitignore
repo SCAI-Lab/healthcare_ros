@@ -221,11 +221,16 @@ venv/
 # Configuration files with sensitive data
 .env
 *.env
+!env_credentials/*.env.encrypted
 config/*.yaml
 config/*.yml
 
-# Encrypted credentials (optional: uncomment to commit encrypted backups)
-# .env.encrypted
+# Plaintext credentials in env_credentials/ (ignore)
+env_credentials/*.env
+env_credentials/.env.*
+
+# Encrypted credentials (keep these - can be committed safely)
+# env_credentials/*.encrypted
 
 # ROS build/install artifacts (workspace-local)
 /build/
@@ -239,3 +244,7 @@ config/*.yml
 
 # Generated files with credentials
 docs/influxdb_realtime_dashboard.html
+nodes/visualization/influxdb_realtime_dashboard.html
+
+# Old virtual environment (use ~/hcmd-venv instead)
+.venv/

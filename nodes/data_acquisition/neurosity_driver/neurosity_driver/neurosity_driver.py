@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
 import rclpy
@@ -9,7 +10,10 @@ from healthcare_msgs.msg import EEG, EEGInfo
 
 from neurosity import NeurositySDK
 
-load_dotenv()
+# Load credentials from centralized location
+project_root = Path(__file__).parent.parent.parent.parent.parent
+env_file = project_root / 'env_credentials' / 'neurosity.env'
+load_dotenv(env_file)
 
 class NeurosityEEGDriver(Node):
     def __init__(self):

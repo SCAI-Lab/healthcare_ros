@@ -16,6 +16,16 @@
             align-items: center;
             box-shadow: 0 4px 6px rgba(0,0,0,0.3);
         }
+        .stream-indicator {
+            font-size: 16px;
+            font-weight: bold;
+            padding: 8px 20px;
+            background: rgba(255,255,255,0.3);
+            border-radius: 8px;
+            letter-spacing: 1px;
+        }
+        .stream-indicator.raw { background: #ef4444; }
+        .stream-indicator.preprocessed { background: #10b981; }
         .header h1 { font-size: 24px; display: flex; align-items: center; gap: 10px; }
         .status { display: flex; gap: 15px; align-items: center; }
         .status-badge {
@@ -56,17 +66,27 @@
             box-shadow: 0 4px 12px rgba(0,0,0,0.5);
         }
         .toggle-btn {
-            padding: 8px 16px; border: none; border-radius: 6px;
-            cursor: pointer; font-size: 12px; font-weight: bold; transition: all 0.2s;
+            padding: 10px 20px; border: none; border-radius: 6px;
+            cursor: pointer; font-size: 14px; font-weight: bold; transition: all 0.2s;
         }
-        .toggle-btn.active { background: #667eea; color: white; }
+        .toggle-btn.active { background: #667eea; color: white; box-shadow: 0 0 15px rgba(102, 126, 234, 0.5); }
         .toggle-btn:not(.active) { background: #334155; color: #94a3b8; }
         .toggle-btn:hover { transform: translateY(-2px); }
+        .comparison-btn {
+            padding: 10px 20px; border: none; border-radius: 6px;
+            cursor: pointer; font-size: 14px; font-weight: bold; transition: all 0.2s;
+            background: #f59e0b; color: white;
+        }
+        .comparison-btn:hover { transform: translateY(-2px); box-shadow: 0 0 15px rgba(245, 158, 11, 0.5); }
+        .comparison-view { display: none; }
+        .comparison-view.active { display: block; }
+        .single-view.hidden { display: none; }
     </style>
 </head>
 <body>
     <div class="header">
         <h1><span>🧠</span><span>Real-Time EEG Dashboard</span></h1>
+        <div class="stream-indicator" id="stream-indicator">RAW DATA</div>
         <div class="status">
             <div class="status-badge"><div class="pulse"></div><span>LIVE</span></div>
             <div class="status-badge"><span id="dataRate">0 Hz</span></div>
@@ -134,19 +154,23 @@
     <div class="stream-toggle">
         <button class="toggle-btn active" id="btn-raw" onclick="setStream('raw')">RAW</button>
         <button class="toggle-btn" id="btn-preprocessed" onclick="setStream('preprocessed')">PREPROCESSED</button>
+        <button class="comparison-btn" id="btn-comparison" onclick="toggleComparison()">COMPARE</button>
     </div>
 
     <script>
+        // InfluxDB configuration (uses Nginx proxy at /api/v2/)
         const INFLUXDB_URL = window.location.protocol + '//' + window.location.host;
         const INFLUXDB_TOKEN = 'hc-eeg-secure-t0ken!2026@api';
         const INFLUXDB_ORG = 'healthcare';
         const INFLUXDB_BUCKET = 'eeg_data';
         const REFRESH_INTERVAL = 6.67; // Update every 6.67ms for 150 Hz refresh (1000ms / 150 = 6.67ms)
-        const MAX_DATA_POINTS = 300;  // 2 seconds at 150 Hz = 300 samples
+        const MAX_DATA_POINTS = 750;  // 5 seconds at 150 Hz = 750 samples
+        const TIME_WINDOW_SECONDS = 5;  // Display window: 5 seconds
         
         const CHANNELS = ['FP1', 'FP2', 'F3', 'F4'];
         const CHANNEL_MAP = { 'FP1': ['FP1', 'CH1'], 'FP2': ['FP2', 'CH2'], 'F3': ['F3', 'CH3'], 'F4': ['F4', 'CH4'] };
         let currentStream = 'raw';
+        let comparisonMode = false;
         let charts = {};
         let lastUpdateTime = Date.now();
         let updateCount = 0;
@@ -157,16 +181,29 @@
                 type: 'line',
                 data: {
                     labels: [],
-                    datasets: [{
-                        label: `${channel} (μV)`,
-                        data: [],
-                        borderColor: getChannelColor(channel),
-                        backgroundColor: getChannelColor(channel, 0.1),
-                        borderWidth: 2,
-                        tension: 0.4,
-                        pointRadius: 0,
-                        fill: true
-                    }]
+                    datasets: [
+                        {
+                            label: channel + ' (Current)',
+                            data: [],
+                            borderColor: getChannelColor(channel),
+                            backgroundColor: getChannelColor(channel, 0.1),
+                            borderWidth: 1.5,
+                            tension: 0.1,
+                            pointRadius: 0,
+                            fill: false
+                        },
+                        {
+                            label: channel + ' (Comparison)',
+                            data: [],
+                            borderColor: getChannelColor(channel, 0.5),
+                            backgroundColor: getChannelColor(channel, 0.05),
+                            borderWidth: 1,
+                            tension: 0.1,
+                            pointRadius: 0,
+                            fill: false,
+                            hidden: true
+                        }
+                    ]
                 },
                 options: {
                     responsive: true,
@@ -174,12 +211,20 @@
                     animation: false,
                     plugins: { legend: { display: false }, tooltip: { enabled: false } },
                     scales: {
-                        x: { display: false },
+                        x: { 
+                            display: true,  // Show X axis to verify time range
+                            type: 'category',
+                            ticks: { 
+                                color: '#94a3b8', 
+                                font: { size: 9 },
+                                maxTicksLimit: 10
+                            }
+                        },
                         y: {
                             grid: { color: 'rgba(148, 163, 184, 0.1)' },
                             ticks: { color: '#94a3b8', font: { size: 10 } },
-                            suggestedMin: -50,
-                            suggestedMax: 50
+                            suggestedMin: -100,
+                            suggestedMax: 100
                         }
                     }
                 }
@@ -200,24 +245,42 @@
             currentStream = stream;
             document.getElementById('btn-raw').classList.toggle('active', stream === 'raw');
             document.getElementById('btn-preprocessed').classList.toggle('active', stream === 'preprocessed');
+            
+            // Update stream indicator
+            const indicator = document.getElementById('stream-indicator');
+            if (stream === 'raw') {
+                indicator.textContent = '📊 RAW DATA';
+                indicator.className = 'stream-indicator raw';
+            } else {
+                indicator.textContent = '✨ PREPROCESSED (0.5-45Hz + CAR)';
+                indicator.className = 'stream-indicator preprocessed';
+            }
+            
             CHANNELS.forEach(channel => {
                 charts[channel].data.labels = [];
                 charts[channel].data.datasets[0].data = [];
                 charts[channel].update('none');
             });
         }
+        
+        function toggleComparison() {
+            comparisonMode = !comparisonMode;
+            const btn = document.getElementById('btn-comparison');
+            btn.textContent = comparisonMode ? 'SINGLE VIEW' : 'COMPARE';
+            // Comparison mode will show both datasets in different colors
+        }
 
         async function fetchData() {
             const startTime = Date.now();
             const measurement = currentStream === 'raw' ? 'eeg_raw' : 'eeg_preprocessed';
+            const comparisonMeasurement = currentStream === 'raw' ? 'eeg_preprocessed' : 'eeg_raw';
             
             const query = `from(bucket: "${INFLUXDB_BUCKET}")
-  |> range(start: -2s)
+  |> range(start: -5s)
   |> filter(fn: (r) => r["_measurement"] == "${measurement}")
-  |> filter(fn: (r) => r["_field"] == "mean" or r["_field"] == "min" or r["_field"] == "max" or r["_field"] == "frame_length")
-  |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
-  |> group(columns: ["channel"])
-  |> sort(columns: ["_time"])`;
+  |> filter(fn: (r) => r["_field"] == "value")
+  |> sort(columns: ["_time"])
+  |> group(columns: ["channel"])`;
 
             try {
                 const response = await fetch(`${INFLUXDB_URL}/api/v2/query?org=${INFLUXDB_ORG}`, {
@@ -233,7 +296,32 @@
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
                 const csv = await response.text();
-                parseAndUpdateCharts(csv);
+                parseAndUpdateCharts(csv, 0);
+                
+                // Fetch comparison data if in comparison mode
+                if (comparisonMode) {
+                    const compQuery = `from(bucket: "${INFLUXDB_BUCKET}")
+  |> range(start: -5s)
+  |> filter(fn: (r) => r["_measurement"] == "${comparisonMeasurement}")
+  |> filter(fn: (r) => r["_field"] == "value")
+  |> sort(columns: ["_time"])
+  |> group(columns: ["channel"])`;
+                    
+                    const compResponse = await fetch(`${INFLUXDB_URL}/api/v2/query?org=${INFLUXDB_ORG}`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Token ${INFLUXDB_TOKEN}`,
+                            'Content-Type': 'application/vnd.flux',
+                            'Accept': 'application/csv'
+                        },
+                        body: compQuery
+                    });
+                    
+                    if (compResponse.ok) {
+                        const compCsv = await compResponse.text();
+                        parseAndUpdateCharts(compCsv, 1);
+                    }
+                }
                 
                 updateCount++;
                 const latency = Date.now() - startTime;
@@ -250,17 +338,14 @@
             }
         }
 
-        function parseAndUpdateCharts(csv) {
+        function parseAndUpdateCharts(csv, datasetIndex = 0) {
             const lines = csv.trim().split('\n');
             if (lines.length < 2) return;
 
             const header = lines[0].split(',');
             const timeIdx = header.indexOf('_time');
             const channelIdx = header.indexOf('channel');
-            const meanIdx = header.indexOf('mean');
-            const minIdx = header.indexOf('min');
-            const maxIdx = header.indexOf('max');
-            const frameLengthIdx = header.indexOf('frame_length');
+            const valueIdx = header.indexOf('_value');
 
             const channelData = {};
             
@@ -283,43 +368,78 @@
                 channel = mappedChannel;
 
                 const timestamp = new Date(cols[timeIdx]);
-                const mean = parseFloat(cols[meanIdx]) || 0;
-                const min = parseFloat(cols[minIdx]) || 0;
-                const max = parseFloat(cols[maxIdx]) || 0;
-                const frameLength = parseInt(cols[frameLengthIdx]) || 0;
+                const value = parseFloat(cols[valueIdx]) || 0;
 
                 if (!channelData[channel]) channelData[channel] = [];
-                channelData[channel].push({ time: timestamp, mean: mean, min: min, max: max, frameLength: frameLength });
+                channelData[channel].push({
+                    time: timestamp.getTime(),
+                    value: value
+                });
             }
 
             CHANNELS.forEach(channel => {
                 if (!channelData[channel] || channelData[channel].length === 0) return;
 
                 channelData[channel].sort((a, b) => a.time - b.time);
-                const latest = channelData[channel][channelData[channel].length - 1];
                 
-                document.getElementById(`mean-${channel}`).textContent = latest.mean.toFixed(1);
-                document.getElementById(`min-${channel}`).textContent = latest.min.toFixed(1);
-                document.getElementById(`max-${channel}`).textContent = latest.max.toFixed(1);
-                document.getElementById(`frame-${channel}`).textContent = latest.frameLength;
+                // Calculate statistics for display from recent samples
+                const values = channelData[channel].map(p => p.value);
+                const mean = values.reduce((a, b) => a + b, 0) / values.length;
+                const min = Math.min(...values);
+                const max = Math.max(...values);
+                
+                document.getElementById(`mean-${channel}`).textContent = mean.toFixed(1);
+                document.getElementById(`min-${channel}`).textContent = min.toFixed(1);
+                document.getElementById(`max-${channel}`).textContent = max.toFixed(1);
+                document.getElementById(`frame-${channel}`).textContent = values.length;
 
                 const chart = charts[channel];
-                const existingTimes = new Set(chart.data.labels);
+                const existingTimes = datasetIndex === 0 ? new Set(chart.data.labels) : new Set();
                 let newPointsAdded = 0;
                 
+                // Get current time for filtering
+                const now = Date.now();
+                const cutoffTime = now - (TIME_WINDOW_SECONDS * 1000);
+                
+                // Show/hide comparison dataset
+                chart.data.datasets[1].hidden = !comparisonMode;
+                
+                // Add new points
                 channelData[channel].forEach(point => {
-                    const timeLabel = point.time.getTime().toString();
-                    if (!existingTimes.has(timeLabel)) {
-                        chart.data.labels.push(timeLabel);
-                        chart.data.datasets[0].data.push(point.mean);
+                    const timeLabel = point.time.toString();
+                    const timestamp = point.time;
+                    
+                    // Only add points within time window
+                    if (timestamp >= cutoffTime && (datasetIndex === 1 || !existingTimes.has(timeLabel))) {
+                        if (datasetIndex === 0) {
+                            if (!existingTimes.has(timeLabel)) {
+                                chart.data.labels.push(timeLabel);
+                            }
+                        }
+                        chart.data.datasets[datasetIndex].data.push(point.value);
                         newPointsAdded++;
                     }
                 });
 
-                if (chart.data.labels.length > MAX_DATA_POINTS) {
-                    const excess = chart.data.labels.length - MAX_DATA_POINTS;
-                    chart.data.labels.splice(0, excess);
-                    chart.data.datasets[0].data.splice(0, excess);
+                // Remove old points (only for primary dataset)
+                if (datasetIndex === 0) {
+                    while (chart.data.labels.length > 0) {
+                        const oldestTime = parseInt(chart.data.labels[0]);
+                        if (oldestTime < cutoffTime || chart.data.labels.length > MAX_DATA_POINTS) {
+                            chart.data.labels.shift();
+                            chart.data.datasets[0].data.shift();
+                            if (chart.data.datasets[1].data.length > 0) {
+                                chart.data.datasets[1].data.shift();
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                }
+
+                // Debug log
+                if (channel === 'FP1' && newPointsAdded > 0 && datasetIndex === 0) {
+                    console.log(`FP1 dataset${datasetIndex}: ${chart.data.labels.length} labels, ${chart.data.datasets[0].data.length} d0, ${chart.data.datasets[1].data.length} d1`);
                 }
 
                 if (newPointsAdded > 0) chart.update('none');

@@ -11,6 +11,7 @@ Features:
 - Supports both raw and preprocessed EEG streams
 - Batch writing for optimal performance (every 50 messages)
 - Docker-compatible (connects to containerized InfluxDB)
+- **Auto-cleanup: Deletes data older than 5 minutes (configurable)**
 
 Data Storage:
 - Measurement: 'eeg_raw' - Raw EEG samples with statistics
@@ -23,15 +24,14 @@ Configuration (environment variables or .env file):
 - INFLUXDB_TOKEN: Authentication token (required)
 - INFLUXDB_ORG: Organization name (default: healthcare)
 - INFLUXDB_BUCKET: Bucket name (default: eeg_data)
+- INFLUXDB_RETENTION_MINUTES: Data retention in minutes (default: 5)
 
-Usage:
-    # Via start.sh with Docker:
+Production Usage (with auto-cleanup):
+    # Cleanup runs every 60 seconds, keeps only last 5 minutes
     USE_INFLUXDB=1 ./launch/start.sh
     
-    # Manual with custom settings:
-    INFLUXDB_URL=http://localhost:8086 \
-    INFLUXDB_TOKEN=your-token \
-    python3 eeg_influxdb_bridge.py
+    # Custom retention (e.g., 10 minutes)
+    INFLUXDB_RETENTION_MINUTES=10 USE_INFLUXDB=1 ./launch/start.sh
 
 Web Dashboard:
     Access at http://localhost:8080 (served by Nginx)
@@ -47,6 +47,8 @@ from healthcare_msgs.msg import EEG, EEGInfo
 try:
     from influxdb_client import InfluxDBClient, Point
     from influxdb_client.client.write_api import SYNCHRONOUS
+    from influxdb_client.client.delete_api import DeleteApi
+    from datetime import datetime, timedelta
     INFLUXDB_AVAILABLE = True
 except ImportError:
     INFLUXDB_AVAILABLE = False
@@ -72,6 +74,9 @@ class EEGInfluxDBBridge(Node):
         if not self.influx_token:
             self.get_logger().warn('INFLUXDB_TOKEN not set. Using empty token (may fail for authenticated instances)')
         
+        # Data retention configuration (default: 5 minutes for production)
+        self.retention_minutes = int(os.getenv('INFLUXDB_RETENTION_MINUTES', '5'))
+        
         # Initialize InfluxDB client
         try:
             self.influx_client = InfluxDBClient(
@@ -80,15 +85,19 @@ class EEGInfluxDBBridge(Node):
                 org=self.influx_org
             )
             self.write_api = self.influx_client.write_api(write_options=SYNCHRONOUS)
+            self.delete_api = self.influx_client.delete_api()
             self.get_logger().info(f'Connected to InfluxDB at {self.influx_url}')
             self.get_logger().info(f'Writing to bucket: {self.influx_bucket}')
+            self.get_logger().info(f'Data retention: {self.retention_minutes} minutes (auto-cleanup enabled)')
         except Exception as e:
             self.get_logger().error(f'Failed to connect to InfluxDB: {e}')
             raise
         
         # Metadata storage
         self.raw_info = None
+        self.raw_sample_rate = 150.0  # Default 150 Hz if no info received yet
         self.processed_info = None
+        self.processed_sample_rate = 150.0  # Default 150 Hz if no info received yet
         self.raw_channel_names = []
         self.processed_channel_names = []
         
@@ -131,15 +140,20 @@ class EEGInfluxDBBridge(Node):
             qos_profile=info_qos
         )
         
+        # Create timer for automatic data cleanup (every 60 seconds)
+        self.cleanup_timer = self.create_timer(60.0, self.cleanup_old_data)
+        
         self.get_logger().info('EEG InfluxDB Bridge started')
         self.get_logger().info('Subscribed to: /eeg/raw, /eeg/raw_info, /eeg/processed, /eeg/processed_info')
         self.get_logger().info('View data at: ' + self.influx_url)
+        self.get_logger().info(f'Auto-cleanup: Running every 60s, deleting data older than {self.retention_minutes} minutes')
     
     def raw_info_callback(self, msg: EEGInfo):
         """Store raw EEG metadata for enriching data points."""
         self.raw_info = msg
+        self.raw_sample_rate = msg.sample_rate if hasattr(msg, 'sample_rate') and msg.sample_rate > 0 else 150.0
         self.raw_channel_names = self._get_channel_names(msg)
-        self.get_logger().info(f'Received raw EEGInfo: {len(self.raw_channel_names)} channels')
+        self.get_logger().info(f'Received raw EEGInfo: {len(self.raw_channel_names)} channels, {self.raw_sample_rate} Hz')
         
         # Write metadata to InfluxDB
         self._write_metadata(msg, 'eeg_raw_metadata')
@@ -147,15 +161,16 @@ class EEGInfluxDBBridge(Node):
     def processed_info_callback(self, msg: EEGInfo):
         """Store preprocessed EEG metadata for enriching data points."""
         self.processed_info = msg
+        self.processed_sample_rate = msg.sample_rate if hasattr(msg, 'sample_rate') and msg.sample_rate > 0 else 150.0
         self.processed_channel_names = self._get_channel_names(msg)
-        self.get_logger().info(f'Received preprocessed EEGInfo: {len(self.processed_channel_names)} channels')
+        self.get_logger().info(f'Received preprocessed EEGInfo: {len(self.processed_channel_names)} channels, {self.processed_sample_rate} Hz')
         
         # Write metadata to InfluxDB
         self._write_metadata(msg, 'eeg_preprocessed_metadata')
     
     def raw_eeg_callback(self, msg: EEG):
         """Write raw EEG data to InfluxDB."""
-        self._write_eeg_data(msg, 'eeg_raw', self.raw_channel_names)
+        self._write_eeg_data(msg, 'eeg_raw', self.raw_channel_names, self.raw_sample_rate)
         self.raw_count += 1
         
         if self.raw_count % 50 == 0:
@@ -163,7 +178,7 @@ class EEGInfluxDBBridge(Node):
     
     def processed_eeg_callback(self, msg: EEG):
         """Write preprocessed EEG data to InfluxDB."""
-        self._write_eeg_data(msg, 'eeg_preprocessed', self.processed_channel_names)
+        self._write_eeg_data(msg, 'eeg_preprocessed', self.processed_channel_names, self.processed_sample_rate)
         self.processed_count += 1
         
         if self.processed_count % 50 == 0:
@@ -210,8 +225,8 @@ class EEGInfluxDBBridge(Node):
         except Exception as e:
             self.get_logger().error(f'Failed to write metadata: {e}')
     
-    def _write_eeg_data(self, msg: EEG, measurement: str, channel_names: list):
-        """Write EEG samples to InfluxDB with statistics (mean, min, max, frame length)."""
+    def _write_eeg_data(self, msg: EEG, measurement: str, channel_names: list, sample_rate: float):
+        """Write EEG samples to InfluxDB as individual time-series points."""
         try:
             # Extract timestamp from ROS message
             timestamp_ns = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec
@@ -227,9 +242,13 @@ class EEGInfluxDBBridge(Node):
             if not channel_names or len(channel_names) != num_channels:
                 channel_names = [f'CH{i+1}' for i in range(num_channels)]
             
-            # Write each channel's samples as separate points
-            # Group samples by channel for efficient writing
+            # Write each channel's samples as INDIVIDUAL points for proper visualization
+            # Each sample gets its own timestamp for accurate time-series representation
             points = []
+            
+            # Calculate time delta between samples (nanoseconds)
+            # At 150 Hz: 1/150 = 0.00667 seconds = 6,666,667 nanoseconds per sample
+            sample_time_delta_ns = int(1e9 / sample_rate)  # nanoseconds per sample
             
             for ch_idx in range(num_channels):
                 channel_name = channel_names[ch_idx]
@@ -239,25 +258,21 @@ class EEGInfluxDBBridge(Node):
                 end_idx = start_idx + samples_per_channel
                 channel_samples = msg.eeg[start_idx:end_idx]
                 
-                # Calculate statistics for this channel
+                # Write EACH individual sample as a separate time-series point
                 if channel_samples:
-                    mean_value = sum(channel_samples) / len(channel_samples)
-                    min_value = min(channel_samples)
-                    max_value = max(channel_samples)
-                    frame_length = len(channel_samples)
-                    
-                    # Create point with channel data and statistics
-                    point = Point(measurement) \
-                        .tag('channel', channel_name) \
-                        .tag('session_id', msg.session_id) \
-                        .tag('frame_id', msg.header.frame_id) \
-                        .field('mean', float(mean_value)) \
-                        .field('min', float(min_value)) \
-                        .field('max', float(max_value)) \
-                        .field('frame_length', frame_length) \
-                        .time(timestamp_ns)
-                    
-                    points.append(point)
+                    for sample_idx, sample_value in enumerate(channel_samples):
+                        # Calculate timestamp for this specific sample
+                        # Distribute samples evenly across the message timestamp
+                        sample_timestamp_ns = timestamp_ns + (sample_idx * sample_time_delta_ns)
+                        
+                        # Create point for individual sample
+                        point = Point(measurement) \
+                            .tag('channel', channel_name) \
+                            .tag('session_id', msg.session_id) \
+                            .field('value', float(sample_value)) \
+                            .time(sample_timestamp_ns)
+                        
+                        points.append(point)
             
             # Write all points in batch
             if points:
@@ -269,8 +284,46 @@ class EEGInfluxDBBridge(Node):
         except Exception as e:
             self.get_logger().error(f'Failed to write EEG data: {e}')
     
+    def cleanup_old_data(self):
+        """Delete data older than retention period (default: 5 minutes)."""
+        try:
+            # Calculate time threshold
+            stop_time = datetime.utcnow()
+            start_time = datetime(1970, 1, 1)  # Beginning of time
+            cutoff_time = stop_time - timedelta(minutes=self.retention_minutes)
+            
+            # Delete old data from both measurements
+            for measurement in ['eeg_raw', 'eeg_preprocessed']:
+                try:
+                    predicate = f'_measurement="{measurement}"'
+                    
+                    self.delete_api.delete(
+                        start=start_time,
+                        stop=cutoff_time,
+                        predicate=predicate,
+                        bucket=self.influx_bucket,
+                        org=self.influx_org
+                    )
+                    
+                    self.get_logger().debug(
+                        f'Cleaned up {measurement}: deleted data older than {self.retention_minutes} min '
+                        f'(before {cutoff_time.isoformat()})'
+                    )
+                except Exception as e:
+                    self.get_logger().warn(f'Cleanup failed for {measurement}: {e}')
+            
+            # Log summary every cleanup
+            self.get_logger().info(
+                f'Auto-cleanup completed: Keeping only last {self.retention_minutes} minutes of data'
+            )
+            
+        except Exception as e:
+            self.get_logger().error(f'Failed to cleanup old data: {e}')
+    
     def destroy_node(self):
         """Clean up InfluxDB connection."""
+        if hasattr(self, 'cleanup_timer'):
+            self.cleanup_timer.cancel()
         if hasattr(self, 'write_api'):
             self.write_api.close()
         if hasattr(self, 'influx_client'):

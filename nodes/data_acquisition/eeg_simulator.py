@@ -9,12 +9,20 @@ Features:
 - 150 Hz sampling rate (realistic for clinical EEG)
 - 30 samples per message at 5 Hz message rate (200ms intervals)
 - 4 channels: FP1, FP2, F3, F4 (frontal electrode positions)
+- **Eyes Open/Closed Simulation**: Alternates every 60 seconds
+  * Eyes OPEN (0-60s, 120-180s, ...): Reduced alpha, increased beta, more eye artifacts
+  * Eyes CLOSED (60-120s, 180-240s, ...): Strong alpha, reduced beta, minimal eye artifacts
 - Realistic brain signal characteristics:
-  * Alpha waves (8-12 Hz) - relaxed wakefulness
-  * Beta waves (13-30 Hz) - active thinking
-  * Theta waves (4-8 Hz) - drowsiness/meditation
-  * Delta waves (0.5-4 Hz) - deep sleep
-- Simulated quality metrics per channel (0.7-1.0)
+  * Alpha waves (8-12 Hz) - Dominant when eyes closed (alpha blocking when open)
+  * Beta waves (13-30 Hz) - Active thinking, stronger when eyes open
+  * Theta waves (4-8 Hz) - Drowsiness/meditation
+  * Delta waves (0.5-4 Hz) - Deep relaxation
+- Channel-specific characteristics:
+  * FP1/FP2 (prefrontal): More eye artifacts, higher noise
+  * F3/F4 (frontal): Less artifacts, cleaner signal
+  * Hemispheric lateralization (left vs right differences)
+- Realistic voltage ranges (10-100 μV typical EEG)
+- Realistic artifacts: Eye movements (50-100 μV), blinks (80 μV), muscle (20 μV), 50Hz powerline
 
 Topics:
 - /eeg/raw (healthcare_msgs/EEG): Raw EEG samples
@@ -56,6 +64,11 @@ class EEGSimulator(Node):
         self.alpha_freq = 10.0  # Hz
         self.beta_freq = 20.0   # Hz
         self.theta_freq = 6.0   # Hz
+        self.delta_freq = 2.0   # Hz
+        
+        # Eyes open/closed simulation (1 minute cycles)
+        self.eyes_cycle_duration = 60.0  # seconds
+        self.eyes_open = True  # Start with eyes open
         
         self.sample_count = 0
         self.message_count = 0
@@ -72,50 +85,114 @@ class EEGSimulator(Node):
     def generate_signal(self, channel, time_sec):
         """Generate realistic EEG-like signal for a channel.
         
-        Combines multiple frequency components to simulate brain activity.
-        Each channel has slightly different phase and amplitude for realism.
+        Combines multiple frequency components to simulate brain activity with:
+        - Channel-specific characteristics (FP1/FP2 vs F3/F4)
+        - Hemispheric lateralization (left vs right)
+        - Eyes open/closed state changes (1-minute cycles)
+        - Realistic voltage ranges (10-100 μV)
+        - Realistic artifacts
         """
-        # Add slight phase shift per channel for spatial variation
-        phase_shift = channel * (math.pi / 8)  # Smaller phase difference between channels
-        
-        # Alpha waves (8-12 Hz) - primary component, dominant in posterior regions
-        alpha = 15.0 * math.sin(2 * math.pi * self.alpha_freq * time_sec + phase_shift)
-        
-        # Beta waves (13-30 Hz) - secondary component, more prominent in frontal regions
-        beta = 8.0 * math.sin(2 * math.pi * self.beta_freq * time_sec + phase_shift * 1.5)
-        
-        # Theta waves (4-8 Hz) - tertiary component
-        theta = 10.0 * math.sin(2 * math.pi * self.theta_freq * time_sec + phase_shift * 0.5)
-        
-        # Combine with channel-specific amplitude variation (±20%)
-        amplitude_factor = 1.0 + 0.2 * math.sin(channel * math.pi / 4)
-        signal = (alpha + beta + theta) * amplitude_factor
-        
-        # Add realistic EEG noise components
         import random
         
-        # 1. White noise (continuous background)
-        white_noise = random.gauss(0, 2.0)
+        # Determine eyes open/closed state (alternates every 60 seconds)
+        cycle_position = time_sec % (2 * self.eyes_cycle_duration)
+        self.eyes_open = cycle_position < self.eyes_cycle_duration
         
-        # 2. Low-frequency drift (DC offset changes)
-        drift = 5.0 * math.sin(time_sec * 0.1 + channel)
+        # Channel-specific properties
+        is_prefrontal = (channel < 2)  # FP1, FP2
+        is_left_hemisphere = (channel % 2 == 0)  # FP1, F3
         
-        # 3. 50/60 Hz powerline interference
+        # Base phase shift for spatial variation
+        phase_shift = channel * (math.pi / 6)
+        
+        # === ALPHA WAVES (8-12 Hz) - Strongest when eyes closed ===
+        if self.eyes_open:
+            # Eyes open: Greatly reduced alpha (alpha blocking)
+            alpha_amplitude = 8.0  # μV
+        else:
+            # Eyes closed: Strong alpha waves (relaxed, awake state)
+            alpha_amplitude = 35.0  # μV
+        
+        # Posterior channels would have more alpha, but we only have frontal
+        # Still show alpha modulation in frontal regions
+        alpha = alpha_amplitude * math.sin(2 * math.pi * self.alpha_freq * time_sec + phase_shift)
+        
+        # === BETA WAVES (13-30 Hz) - Active thinking, more in frontal ===
+        if self.eyes_open:
+            # Eyes open: Increased beta (active processing)
+            beta_amplitude = 15.0 if is_prefrontal else 12.0  # μV
+        else:
+            # Eyes closed: Reduced beta
+            beta_amplitude = 8.0 if is_prefrontal else 6.0  # μV
+        
+        beta = beta_amplitude * math.sin(2 * math.pi * self.beta_freq * time_sec + phase_shift * 1.5)
+        
+        # === THETA WAVES (4-8 Hz) - Drowsiness, meditation ===
+        # More prominent when eyes closed and relaxed
+        theta_amplitude = 10.0 if not self.eyes_open else 5.0  # μV
+        theta = theta_amplitude * math.sin(2 * math.pi * self.theta_freq * time_sec + phase_shift * 0.5)
+        
+        # === DELTA WAVES (0.5-4 Hz) - Deep relaxation ===
+        delta_amplitude = 12.0 if not self.eyes_open else 4.0  # μV
+        delta = delta_amplitude * math.sin(2 * math.pi * self.delta_freq * time_sec + phase_shift * 0.3)
+        
+        # === HEMISPHERIC LATERALIZATION ===
+        # Right hemisphere slightly more active in spatial processing (eyes open)
+        # Left hemisphere slightly more active in language processing
+        if is_left_hemisphere:
+            lateralization_factor = 1.0 + (0.1 if self.eyes_open else 0.05)
+        else:
+            lateralization_factor = 1.0 + (0.15 if self.eyes_open else 0.05)
+        
+        # Combine brain rhythms
+        signal = (alpha + beta + theta + delta) * lateralization_factor
+        
+        # === REALISTIC NOISE COMPONENTS ===
+        
+        # 1. White noise (continuous background) - 2-5 μV
+        white_noise = random.gauss(0, 3.0)
+        
+        # 2. Low-frequency drift and DC offset - will be removed by high-pass filter
+        # Add significant DC offset that varies per channel
+        dc_offset = 20.0 * (channel + 1)  # 20, 40, 60, 80 μV per channel
+        drift = dc_offset + 10.0 * math.sin(2 * math.pi * 0.05 * time_sec)  # 0.05 Hz slow drift
+        
+        # 3. 50 Hz powerline interference (European standard)
         powerline = 1.5 * math.sin(2 * math.pi * 50 * time_sec)
         
-        # 4. Muscle artifacts (random bursts)
-        if random.random() < 0.05:  # 5% chance of muscle artifact
-            muscle_artifact = random.gauss(0, 15)
+        # 4. Common-mode noise affecting all channels (removed by CAR)
+        common_mode_noise = 5.0 * math.sin(2 * math.pi * 0.3 * time_sec)
+        
+        # 5. Muscle artifacts (EMG) - random bursts, more when eyes open
+        muscle_probability = 0.08 if self.eyes_open else 0.03
+        if random.random() < muscle_probability:
+            muscle_artifact = random.gauss(0, 20)  # 20 μV bursts
         else:
             muscle_artifact = 0
         
-        # 5. Eye blink artifacts (mainly in frontal channels FP1, FP2)
-        if channel < 2 and random.random() < 0.02:  # 2% chance in frontal channels
-            blink_artifact = random.gauss(0, 30)
+        # 5. Eye movement artifacts - MUCH stronger in prefrontal channels (FP1, FP2)
+        if is_prefrontal and self.eyes_open:
+            # Eye movements and blinks when eyes open
+            if random.random() < 0.03:  # 3% chance of eye movement
+                eye_artifact = random.gauss(0, 50)  # 50-100 μV (very large!)
+            elif random.random() < 0.015:  # 1.5% chance of blink
+                eye_artifact = random.gauss(0, 80)  # Blinks are even larger
+            else:
+                eye_artifact = 0
+        elif is_prefrontal and not self.eyes_open:
+            # Occasional slow eye movements even with closed eyes
+            if random.random() < 0.01:
+                eye_artifact = random.gauss(0, 25)
+            else:
+                eye_artifact = 0
         else:
-            blink_artifact = 0
+            # F3, F4 less affected by eye artifacts
+            eye_artifact = random.gauss(0, 5) if random.random() < 0.01 else 0
         
-        return signal + white_noise + drift + powerline + muscle_artifact + blink_artifact
+        # 6. Channel-specific noise (prefrontal channels are noisier)
+        channel_noise_factor = 1.4 if is_prefrontal else 1.0
+        
+        return (signal + white_noise + drift + powerline + muscle_artifact + eye_artifact + common_mode_noise) * channel_noise_factor
     
     def publish_eeg(self):
         """Publish a simulated EEG message."""
@@ -154,9 +231,10 @@ class EEGSimulator(Node):
         
         # Log progress every 10 messages
         if self.message_count % 10 == 0:
+            eyes_state = "OPEN" if self.eyes_open else "CLOSED"
             self.get_logger().info(
                 f'Published {self.message_count} EEG messages '
-                f'({self.sample_count} samples, {self.time_offset:.1f}s elapsed)'
+                f'({self.sample_count} samples, {self.time_offset:.1f}s elapsed) - Eyes: {eyes_state}'
             )
     
     def publish_eeg_info(self):
