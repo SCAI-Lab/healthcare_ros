@@ -3,40 +3,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Real-Time EEG Dashboard</title>
+    <title>EEG demonstration</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; overflow: hidden; }
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 15px 30px;
+        .page-title {
+            text-align: center;
+            font-size: 20px;
+            font-weight: 700;
+            padding: 14px 16px 6px;
+            letter-spacing: 0.5px;
+            color: #e2e8f0;
+        }
+        .status {
             display: flex;
-            justify-content: space-between;
+            gap: 10px;
+            justify-content: center;
             align-items: center;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            font-size: 12px;
+            color: #94a3b8;
+            padding-bottom: 6px;
         }
-        .stream-indicator {
-            font-size: 16px;
-            font-weight: bold;
-            padding: 8px 20px;
-            background: rgba(255,255,255,0.3);
-            border-radius: 8px;
-            letter-spacing: 1px;
-        }
-        .stream-indicator.raw { background: #ef4444; }
-        .stream-indicator.preprocessed { background: #10b981; }
-        .header h1 { font-size: 24px; display: flex; align-items: center; gap: 10px; }
-        .status { display: flex; gap: 15px; align-items: center; }
         .status-badge {
-            display: flex; align-items: center; gap: 5px; padding: 5px 12px;
-            background: rgba(255,255,255,0.2); border-radius: 20px; font-size: 12px;
+            display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px;
+            background: rgba(255,255,255,0.08); border-radius: 20px;
         }
         .pulse { width: 8px; height: 8px; background: #48bb78; border-radius: 50%; animation: pulse 1s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
         .container {
             display: grid; grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(2, 1fr);
-            gap: 15px; padding: 15px; height: calc(100vh - 70px);
+            gap: 15px; padding: 10px 15px 15px; height: calc(100vh - 66px);
         }
         .channel-card {
             background: #1e293b; border-radius: 12px; padding: 15px;
@@ -84,14 +81,11 @@
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1><span>🧠</span><span>Real-Time EEG Dashboard</span></h1>
-        <div class="stream-indicator" id="stream-indicator">RAW DATA</div>
-        <div class="status">
-            <div class="status-badge"><div class="pulse"></div><span>LIVE</span></div>
-            <div class="status-badge"><span id="dataRate">0 Hz</span></div>
-            <div class="status-badge"><span id="latency">0ms</span></div>
-        </div>
+    <div class="page-title">🧠 Raw (bold) vs Preprocessed (thin)</div>
+    <div class="status">
+        <div class="status-badge"><div class="pulse"></div><span>LIVE</span></div>
+        <div class="status-badge"><span id="dataRate">0 Hz</span></div>
+        <div class="status-badge"><span id="latency">0ms</span></div>
     </div>
 
     <div class="container">
@@ -151,26 +145,20 @@
         </div>
     </div>
 
-    <div class="stream-toggle">
-        <button class="toggle-btn active" id="btn-raw" onclick="setStream('raw')">RAW</button>
-        <button class="toggle-btn" id="btn-preprocessed" onclick="setStream('preprocessed')">PREPROCESSED</button>
-        <button class="comparison-btn" id="btn-comparison" onclick="toggleComparison()">COMPARE</button>
-    </div>
-
     <script>
         // InfluxDB configuration (uses Nginx proxy at /api/v2/)
         const INFLUXDB_URL = window.location.protocol + '//' + window.location.host;
         const INFLUXDB_TOKEN = 'INFLUXDB_TOKEN_PLACEHOLDER';
         const INFLUXDB_ORG = 'INFLUXDB_ORG_PLACEHOLDER';
         const INFLUXDB_BUCKET = 'INFLUXDB_BUCKET_PLACEHOLDER';
-        const REFRESH_INTERVAL = 6.67; // Update every 6.67ms for 150 Hz refresh (1000ms / 150 = 6.67ms)
-        const MAX_DATA_POINTS = 750;  // 5 seconds at 150 Hz = 750 samples
-        const TIME_WINDOW_SECONDS = 5;  // Display window: 5 seconds
+        const REFRESH_INTERVAL = 50; // 20 Hz refresh to reduce browser load
+        const MAX_DATA_POINTS = 300;  // 2 seconds at 150 Hz = 300 samples
+        const TIME_WINDOW_SECONDS = 2;  // Display window: 2 seconds
         
         const CHANNELS = ['FP1', 'FP2', 'F3', 'F4'];
         const CHANNEL_MAP = { 'FP1': ['FP1', 'CH1'], 'FP2': ['FP2', 'CH2'], 'F3': ['F3', 'CH3'], 'F4': ['F4', 'CH4'] };
         let currentStream = 'raw';
-        let comparisonMode = false;
+        let comparisonMode = true;
         let charts = {};
         let lastUpdateTime = Date.now();
         let updateCount = 0;
@@ -187,7 +175,7 @@
                             data: [],
                             borderColor: getChannelColor(channel),
                             backgroundColor: getChannelColor(channel, 0.1),
-                            borderWidth: 1.5,
+                            borderWidth: 2.5,
                             tension: 0.1,
                             pointRadius: 0,
                             fill: false
@@ -241,42 +229,13 @@
             return colors[channel] || `rgba(148, 163, 184, ${alpha})`;
         }
 
-        function setStream(stream) {
-            currentStream = stream;
-            document.getElementById('btn-raw').classList.toggle('active', stream === 'raw');
-            document.getElementById('btn-preprocessed').classList.toggle('active', stream === 'preprocessed');
-            
-            // Update stream indicator
-            const indicator = document.getElementById('stream-indicator');
-            if (stream === 'raw') {
-                indicator.textContent = '📊 RAW DATA';
-                indicator.className = 'stream-indicator raw';
-            } else {
-                indicator.textContent = '✨ PREPROCESSED (0.5-45Hz + CAR)';
-                indicator.className = 'stream-indicator preprocessed';
-            }
-            
-            CHANNELS.forEach(channel => {
-                charts[channel].data.labels = [];
-                charts[channel].data.datasets[0].data = [];
-                charts[channel].update('none');
-            });
-        }
-        
-        function toggleComparison() {
-            comparisonMode = !comparisonMode;
-            const btn = document.getElementById('btn-comparison');
-            btn.textContent = comparisonMode ? 'SINGLE VIEW' : 'COMPARE';
-            // Comparison mode will show both datasets in different colors
-        }
-
         async function fetchData() {
             const startTime = Date.now();
             const measurement = currentStream === 'raw' ? 'eeg_raw' : 'eeg_preprocessed';
             const comparisonMeasurement = currentStream === 'raw' ? 'eeg_preprocessed' : 'eeg_raw';
             
             const query = `from(bucket: "${INFLUXDB_BUCKET}")
-  |> range(start: -5s)
+  |> range(start: -${TIME_WINDOW_SECONDS}s)
   |> filter(fn: (r) => r["_measurement"] == "${measurement}")
   |> filter(fn: (r) => r["_field"] == "value")
   |> sort(columns: ["_time"])
@@ -301,7 +260,7 @@
                 // Fetch comparison data if in comparison mode
                 if (comparisonMode) {
                     const compQuery = `from(bucket: "${INFLUXDB_BUCKET}")
-  |> range(start: -5s)
+  |> range(start: -${TIME_WINDOW_SECONDS}s)
   |> filter(fn: (r) => r["_measurement"] == "${comparisonMeasurement}")
   |> filter(fn: (r) => r["_field"] == "value")
   |> sort(columns: ["_time"])
@@ -435,11 +394,6 @@
                             break;
                         }
                     }
-                }
-
-                // Debug log
-                if (channel === 'FP1' && newPointsAdded > 0 && datasetIndex === 0) {
-                    console.log(`FP1 dataset${datasetIndex}: ${chart.data.labels.length} labels, ${chart.data.datasets[0].data.length} d0, ${chart.data.datasets[1].data.length} d1`);
                 }
 
                 if (newPointsAdded > 0) chart.update('none');

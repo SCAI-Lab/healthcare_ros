@@ -2,14 +2,15 @@
 """
 Dashboard Generator - Credential Injection Script
 
-Generates the InfluxDB real-time dashboard HTML file by injecting credentials from .env file
+Generates the InfluxDB real-time dashboard HTML file by injecting credentials from a .env file
 into the template. This ensures credentials are never hardcoded in version-controlled files.
 
 Process:
-1. Reads credentials from .env file
-2. Loads HTML template from docs/influxdb_realtime_dashboard.template.html
+1. Reads credentials from env_credentials/.env.influxdb (preferred)
+    or falls back to .env (legacy)
+2. Loads HTML template from nodes/visualization/dashboard/influxdb_realtime_dashboard.template.html
 3. Replaces placeholders with actual credentials
-4. Writes generated dashboard to docs/influxdb_realtime_dashboard.html (git-ignored)
+4. Writes generated dashboard to nodes/visualization/dashboard/influxdb_realtime_dashboard.html (git-ignored)
 
 Security:
 - Template is tracked in git (no credentials)
@@ -20,16 +21,16 @@ Usage:
     python3 generate_dashboard.py
     
     # After updating credentials:
-    nano .env
-    python3 generate_dashboard.py
+    nano env_credentials/.env.influxdb
+    python3 nodes/visualization/dashboard/generate_dashboard.py
     docker restart healthcare-nginx
 
 Output:
-    docs/influxdb_realtime_dashboard.html - Ready to be served by Nginx as index.html
+    nodes/visualization/dashboard/influxdb_realtime_dashboard.html - Ready to be served by Nginx as index.html
 
 See Also:
     - PRODUCTION_DEPLOYMENT.md - Full deployment guide
-    - docs/setup/CREDENTIALS_SETUP.md - Credential setup instructions
+    - env_credentials/README.md - Credential setup instructions
 """
 import os
 import sys
@@ -79,18 +80,25 @@ def generate_dashboard(template_path, output_path, env_vars):
 
 def main():
     # Navigate to project root from nodes/visualization/
-    project_root = Path(__file__).parent.parent.parent
+    project_root = Path(__file__).parent.parent.parent.parent
     env_path = project_root / 'env_credentials' / '.env.influxdb'
     template_path = Path(__file__).parent / 'influxdb_realtime_dashboard.template.html'
     output_path = Path(__file__).parent / 'influxdb_realtime_dashboard.html'
     
     # Load environment variables
-    env_vars = load_env_file(env_path)
+    if env_path.exists():
+        env_vars = load_env_file(env_path)
+        env_source = 'env_credentials/.env.influxdb'
+    else:
+        print('ERROR: No credentials file found at env_credentials/.env.influxdb.')
+        print('Create it or decrypt encrypted credentials:')
+        print('  python3 scripts/encrypt_credentials_multi.py --decrypt')
+        sys.exit(1)
     
     # Generate dashboard
     generate_dashboard(template_path, output_path, env_vars)
     
-    print(f"✅ Using credentials from env_credentials/.env.influxdb:")
+    print(f"✅ Using credentials from {env_source}:")
     print(f"   - Token: {env_vars.get('INFLUXDB_ADMIN_TOKEN', 'N/A')[:20]}...")
     print(f"   - Org: {env_vars.get('INFLUXDB_ORG', 'N/A')}")
     print(f"   - Bucket: {env_vars.get('INFLUXDB_BUCKET', 'N/A')}")

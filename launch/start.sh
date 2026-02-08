@@ -291,7 +291,7 @@ OPENBCI_CHANNELS="${OPENBCI_CHANNELS:-8}"  # OpenBCI channel count (8 or 16)
 USE_ROSBAG="${USE_ROSBAG:-0}"  # 1=use rosbag (MCAP), 0=use JSON files
 USE_INFLUXDB="${USE_INFLUXDB:-0}"  # 1=enable InfluxDB bridge for web visualization
 MANAGE_DOCKER="${MANAGE_DOCKER:-1}"  # 1=automatically start/stop Docker services, 0=manual
-ENCRYPTED_ENV="${ENCRYPTED_ENV:-0}"  # 1=use encrypted .env.encrypted file, 0=use plain .env
+ENCRYPTED_ENV="${ENCRYPTED_ENV:-0}"  # 1=use encrypted credentials, 0=use plain credentials
 
 # Start Docker Compose services if enabled
 if [ "$USE_INFLUXDB" -eq 1 ] && [ "$MANAGE_DOCKER" -eq 1 ]; then
@@ -299,66 +299,64 @@ if [ "$USE_INFLUXDB" -eq 1 ] && [ "$MANAGE_DOCKER" -eq 1 ]; then
     if command -v docker-compose >/dev/null 2>&1; then
         cd "$PROJECT_ROOT" || exit 1
         
+        CREDENTIALS_DIR="$PROJECT_ROOT/env_credentials"
+        INFLUX_ENV_FILE="$CREDENTIALS_DIR/.env.influxdb"
+        INFLUX_ENCRYPTED_FILE="$CREDENTIALS_DIR/.env.influxdb.encrypted"
+        
         # Handle encrypted or plain credentials
         if [ "$ENCRYPTED_ENV" -eq 1 ]; then
             echo "🔐 Using encrypted credentials..."
-            
-            # Check if encrypted file exists
-            if [ ! -f "$PROJECT_ROOT/.env.encrypted" ]; then
-                echo "❌ ERROR: .env.encrypted file not found!"
+            if [ -f "$INFLUX_ENCRYPTED_FILE" ]; then
+                echo "Decrypting env_credentials/.env.influxdb.encrypted..."
+                if ! "$VENV_PATH/bin/python3" "$PROJECT_ROOT/scripts/encrypt_credentials_multi.py" --decrypt; then
+                    echo "❌ Decryption failed!"
+                    exit 1
+                fi
+                # Clean up decrypted files on exit
+                trap 'rm -f "$CREDENTIALS_DIR"/*.env "$CREDENTIALS_DIR"/.env.* 2>/dev/null' EXIT
+            else
+                echo "❌ ERROR: No encrypted credentials found."
+                echo "Expected:"
+                echo "  - $INFLUX_ENCRYPTED_FILE"
                 echo ""
-                echo "Please encrypt your credentials first:"
-                echo "  cd $PROJECT_ROOT"
-                echo "  python3 scripts/encrypt_credentials.py --setup"
+                echo "Create encrypted credentials first:"
+                echo "  python3 scripts/encrypt_credentials_multi.py --setup"
                 echo ""
-                exit 1
-            fi
-            
-            # Decrypt credentials
-            echo "Decrypting credentials..."
-            if ! "$VENV_PATH/bin/python3" "$PROJECT_ROOT/scripts/encrypt_credentials.py" --decrypt; then
-                echo "❌ Decryption failed!"
-                exit 1
-            fi
-            
-            # Clean up decrypted file on exit
-            trap 'rm -f "$PROJECT_ROOT/.env" 2>/dev/null' EXIT
-        else
-            # Load credentials from plain .env file (REQUIRED)
-            if [ ! -f "$PROJECT_ROOT/.env" ]; then
-                echo "❌ ERROR: .env file not found!"
-                echo ""
-                echo "The .env file is required for security reasons."
-                echo "Please create it before starting:"
-                echo ""
-                echo "  cd $PROJECT_ROOT"
-                echo "  cp .env.example .env"
-                echo "  # Edit .env with your secure credentials"
-                echo ""
-                echo "For better security, use encrypted credentials:"
-                echo "  python3 scripts/encrypt_credentials.py --setup"
-                echo "  ENCRYPTED_ENV=1 bash launch/start.sh"
-                echo ""
-                echo "See CREDENTIALS_SETUP.md for details."
                 exit 1
             fi
         fi
         
-        echo "Loading credentials from .env..."
-        set -a  # Export all variables
-        source "$PROJECT_ROOT/.env"
-        set +a
+        # Load credentials from env_credentials/.env.influxdb only
+        if [ -f "$INFLUX_ENV_FILE" ]; then
+            echo "Loading credentials from env_credentials/.env.influxdb..."
+            set -a  # Export all variables
+            source "$INFLUX_ENV_FILE"
+            set +a
+        else
+            echo "❌ ERROR: No InfluxDB credentials found!"
+            echo ""
+            echo "Create env_credentials/.env.influxdb first:"
+            echo "  # Create and edit with your secure credentials"
+            echo "  nano env_credentials/.env.influxdb"
+            echo ""
+            echo "Or use encrypted credentials:"
+            echo "  python3 scripts/encrypt_credentials_multi.py --setup"
+            echo "  ENCRYPTED_ENV=1 bash launch/start.sh"
+            echo ""
+            echo "See env_credentials/README.md for details."
+            exit 1
+        fi
         
         # Validate required environment variables
         if [ -z "$INFLUXDB_ADMIN_USERNAME" ] || [ -z "$INFLUXDB_ADMIN_PASSWORD" ] || [ -z "$INFLUXDB_ADMIN_TOKEN" ]; then
-            echo "❌ ERROR: Missing required credentials in .env file!"
+            echo "❌ ERROR: Missing required credentials in InfluxDB env file!"
             echo ""
             echo "Required variables:"
             echo "  - INFLUXDB_ADMIN_USERNAME"
             echo "  - INFLUXDB_ADMIN_PASSWORD"
             echo "  - INFLUXDB_ADMIN_TOKEN"
             echo ""
-            echo "Please check your .env file and try again."
+            echo "Please check env_credentials/.env.influxdb and try again."
             exit 1
         fi
         
@@ -366,7 +364,7 @@ if [ "$USE_INFLUXDB" -eq 1 ] && [ "$MANAGE_DOCKER" -eq 1 ]; then
         echo "Generating dashboard with credentials..."
         python3 "$PROJECT_ROOT/nodes/visualization/dashboard/generate_dashboard.py" || {
             echo "❌ ERROR: Failed to generate dashboard."
-            echo "Please check generate_dashboard.py and your .env file."
+            echo "Please check generate_dashboard.py and your credentials file."
             exit 1
         }
         
@@ -501,9 +499,9 @@ if [ "$RUN_NODE" -eq 1 ]; then
         INFLUXDB_BRIDGE_LOG_FILE="$LOG_DIR/eeg_influxdb_bridge.log"
         INFLUXDB_BRIDGE_SCRIPT="$PROJECT_ROOT/nodes/saver/eeg_influxdb_bridge.py"
         
-        # Ensure credentials are loaded (either from decryption or plain .env)
-        if [ ! -f "$PROJECT_ROOT/.env" ]; then
-            echo "❌ ERROR: .env file not found!"
+        # Ensure credentials are loaded from the environment
+        if [ -z "${INFLUXDB_ADMIN_TOKEN:-}" ]; then
+            echo "❌ ERROR: InfluxDB credentials not loaded!"
             echo "Credentials should have been loaded earlier in the script."
             echo "This is a logic error. Please report this issue."
             exit 1
@@ -524,8 +522,8 @@ if [ "$RUN_NODE" -eq 1 ]; then
             echo "🌐 Web Visualization URLs:"
             echo "   - Real-Time Dashboard: http://localhost:8080"
             echo "   - InfluxDB UI: $INFLUXDB_URL"
-            echo "   - Username: admin"
-            echo "   - Password: healthcare2026"
+            echo "   - Username: ${INFLUXDB_ADMIN_USERNAME:-admin}"
+            echo "   - Password: ${INFLUXDB_ADMIN_PASSWORD:-""}"
             echo ""
         else
             echo "InfluxDB bridge script not found at $INFLUXDB_BRIDGE_SCRIPT; skipping"
@@ -613,8 +611,8 @@ if [ "$RUN_NODE" -eq 1 ]; then
             echo "🌐 Web Visualization:"
             echo "  - Real-Time Dashboard: http://localhost:8080"
             echo "  - InfluxDB UI: ${INFLUXDB_URL:-http://localhost:8086}"
-            echo "  - Username: admin"
-            echo "  - Password: healthcare2026"
+            echo "  - Username: ${INFLUXDB_ADMIN_USERNAME:-admin}"
+            echo "  - Password: ${INFLUXDB_ADMIN_PASSWORD:-""}"
             echo "  - Org: ${INFLUXDB_ORG:-healthcare}"
             echo "  - Bucket: ${INFLUXDB_BUCKET:-eeg_data}"
             echo "  - Measurements: eeg_raw, eeg_preprocessed"

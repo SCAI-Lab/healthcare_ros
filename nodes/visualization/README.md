@@ -7,16 +7,16 @@ This folder contains all visualization tools for the EEG healthcare system.
 ### Files
 - `influxdb_realtime_dashboard.template.html` - Dashboard template (tracked in git)
 - `influxdb_realtime_dashboard.html` - Generated dashboard with credentials (git-ignored)
-- `generate_dashboard.py` - Script to inject credentials into template
+- `dashboard/generate_dashboard.py` - Script to inject credentials into template
 
 ### Generate Dashboard
 
 ```bash
 # From project root
-python3 nodes/visualization/generate_dashboard.py
+python3 nodes/visualization/dashboard/generate_dashboard.py
 ```
 
-This reads credentials from `.env` and generates the dashboard HTML.
+This reads credentials from `env_credentials/.env.influxdb` and generates the dashboard HTML.
 
 ### Access Dashboard
 
@@ -58,6 +58,6 @@ The `eeg_visualization_rqt/` folder contains a ROS2 RQT plugin for live EEG visu
 The web dashboard is automatically served by the Nginx container defined in `docker-compose.yml`.
 
 **To update dashboard:**
-1. Edit `.env` credentials
-2. Run: `python3 nodes/visualization/generate_dashboard.py`
+1. Edit `env_credentials/.env.influxdb` credentials
+2. Run: `python3 nodes/visualization/dashboard/generate_dashboard.py`
 3. Restart: `docker restart healthcare-nginx`

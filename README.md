@@ -11,10 +11,10 @@
 
 ### 1. Configure Credentials
 
+Create the InfluxDB credential file:
+
 ```bash
-# Copy example and edit with your credentials
-cp .env.example .env
-nano .env
+nano env_credentials/.env.influxdb
 ```
 
 **Required credentials:**
@@ -24,12 +24,13 @@ INFLUXDB_ADMIN_PASSWORD=YourSecurePassword123!
 INFLUXDB_ORG=healthcare
 INFLUXDB_BUCKET=eeg_data
 INFLUXDB_ADMIN_TOKEN=your-secure-token-2026!
+INFLUXDB_RETENTION_MINUTES=5
 ```
 
 ### 2. Generate Dashboard
 
 ```bash
-python3 nodes/visualization/generate_dashboard.py
+python3 nodes/visualization/dashboard/generate_dashboard.py
 ```
 
 ### 3. Start Docker Services
@@ -104,22 +105,11 @@ Open: **http://localhost:8080**
 
 ## 🎮 Usage
 
-### Start Full System
+### Start Full System (Production: simulator + web dashboard)
 
 ```bash
-# Start Docker containers
-docker-compose up -d
-
-# In separate terminals, start ROS2 nodes:
-
-# Terminal 1: Simulator
-python3 nodes/data_acquisition/eeg_simulator.py
-
-# Terminal 2: Preprocessing
-python3 nodes/preprocessing/eeg_preprocessing.py
-
-# Terminal 3: InfluxDB Bridge
-python3 nodes/saver/eeg_influxdb_bridge.py
+# Start Docker containers + simulator + preprocessing + InfluxDB bridge
+USE_INFLUXDB=1 ./launch/start.sh
 ```
 
 ### View Dashboard
@@ -148,7 +138,7 @@ docker-compose down
 
 ### Environment Variables
 
-Edit `.env` file:
+Edit `env_credentials/.env.influxdb`:
 
 ```bash
 # InfluxDB Configuration
@@ -183,8 +173,8 @@ nginx:
 ```
 .
 ├── docker-compose.yml              # Docker services configuration
-├── .env                             # Credentials (git-ignored)
-├── .env.example                     # Credential template
+├── env_credentials/                # Credential files (git-ignored)
+│   └── .env.influxdb                # InfluxDB credentials
 ├── nodes/
 │   ├── data_acquisition/
 │   │   └── eeg_simulator.py        # 150 Hz EEG simulator
@@ -210,7 +200,7 @@ nginx:
 After changing credentials:
 
 ```bash
-python3 nodes/visualization/generate_dashboard.py
+python3 nodes/visualization/dashboard/generate_dashboard.py
 docker restart healthcare-nginx
 ```
 
@@ -240,9 +230,9 @@ docker-compose ps
 
 ### Best Practices
 
-1. **Change default credentials** in `.env`
+1. **Change default credentials** in `env_credentials/.env.influxdb`
 2. **Use strong passwords** (min 12 characters, special chars)
-3. **Don't commit** `.env` to git (already in .gitignore)
+3. **Don't commit** `env_credentials/.env.influxdb` to git (already in .gitignore)
 4. **Use HTTPS** in production (configure nginx/ssl/)
 
 ### Production Deployment
@@ -326,5 +316,5 @@ This project is part of the healthcare_ros system developed by SCAI-Lab.
 3. **Web dashboard** served by Nginx at http://localhost:8080
 4. **No manual installation** of InfluxDB or Nginx required
 
-Just configure `.env`, run `docker-compose up -d`, start ROS2 nodes, and open the dashboard!
+Just configure `env_credentials/.env.influxdb`, run `USE_INFLUXDB=1 ./launch/start.sh`, and open the dashboard!
 
