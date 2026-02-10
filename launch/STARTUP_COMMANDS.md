@@ -37,6 +37,7 @@ Control script behavior with these variables:
 | `WORKSPACE` | `~/ros2_ws` | Path to ROS2 workspace |
 | `ROS_DISTRO` | `jazzy` | ROS2 distribution name |
 | `VISUALIZATION_MODE` | `none` | Set to `comparison` for offline plotting, `rqt` for live visualization |
+| `PRODUCTION` | `0` | Production preset: simulator + online visualization |
 
 ## Common Usage Examples
 
@@ -56,6 +57,11 @@ Control script behavior with these variables:
 USE_ACQUISITION=0 ./launch/start.sh
 # Or simply (0 is default):
 ./launch/start.sh
+```
+
+### Production preset (simulator + online visualization)
+```bash
+PRODUCTION=1 ./launch/start.sh
 ```
 
 ### Run with real Neurosity device
@@ -195,6 +201,14 @@ Launch rqt with the EEG visualization plugin:
 ```bash
 ./launch/start.sh rqt
 ```
+
+### Online dashboard (InfluxDB + Nginx)
+```bash
+USE_INFLUXDB=1 ./launch/start.sh
+```
+Dashboard URLs:
+- http://localhost/
+- https://localhost/
 
 ## Troubleshooting
 

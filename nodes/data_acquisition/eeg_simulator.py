@@ -38,6 +38,7 @@ import math
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy
+from rclpy.duration import Duration
 from healthcare_msgs.msg import EEG, EEGInfo
 
 
@@ -69,10 +70,13 @@ class EEGSimulator(Node):
         # Eyes open/closed simulation (1 minute cycles)
         self.eyes_cycle_duration = 60.0  # seconds
         self.eyes_open = True  # Start with eyes open
-        
+
         self.sample_count = 0
         self.message_count = 0
         self.info_published = False
+
+        # Anchor simulated timestamps to avoid overlapping samples
+        self.start_time = self.get_clock().now()
         
         # Timer for publishing messages
         self.timer = self.create_timer(self.message_interval, self.publish_eeg)
@@ -197,7 +201,8 @@ class EEGSimulator(Node):
     def publish_eeg(self):
         """Publish a simulated EEG message."""
         eeg_msg = EEG()
-        eeg_msg.header.stamp = self.get_clock().now().to_msg()
+        message_time = self.start_time + Duration(seconds=self.sample_count / self.sampling_rate)
+        eeg_msg.header.stamp = message_time.to_msg()
         eeg_msg.header.frame_id = 'neurosity_simulator'
         eeg_msg.session_id = 'sim_session_001'
         eeg_msg.sample_size = self.samples_per_message
@@ -218,7 +223,7 @@ class EEGSimulator(Node):
         
         eeg_msg.eeg = eeg_data
         eeg_msg.quality = quality_data
-        
+
         self.eeg_pub.publish(eeg_msg)
         self.message_count += 1
         self.sample_count += self.samples_per_message
@@ -236,7 +241,7 @@ class EEGSimulator(Node):
                 f'Published {self.message_count} EEG messages '
                 f'({self.sample_count} samples, {self.time_offset:.1f}s elapsed) - Eyes: {eyes_state}'
             )
-    
+
     def publish_eeg_info(self):
         """Publish EEG metadata once."""
         info_msg = EEGInfo()

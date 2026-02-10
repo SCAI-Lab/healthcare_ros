@@ -14,6 +14,7 @@ WORKSPACE="${WORKSPACE:-$HOME/ros2_ws}"
 ROS_DISTRO="${ROS_DISTRO:-jazzy}"
 REBUILD="${REBUILD:-0}"
 NO_BUILD="${NO_BUILD:-0}"
+PRODUCTION="${PRODUCTION:-0}"
 
 usage() {
     cat <<EOF
@@ -28,6 +29,7 @@ Environment variables:
   VENV_PATH   Path to Python venv (default: $VENV_PATH)
   WORKSPACE   Path to ROS2 workspace (default: $WORKSPACE)
   ROS_DISTRO  ROS2 distro (default: $ROS_DISTRO)
+    PRODUCTION  Enable production preset (simulator + online visualization)
 Commands:
   run         Start the neurosity_driver node after setup (ros2 run)
   help        Show this help message
@@ -198,9 +200,9 @@ fi
 
 if [ "$BUILD_NEEDED" -eq 1 ]; then
     echo "Building workspace with all dependencies..."
-    # Build all packages up to and including the demonstration package
+    # Build all packages in the workspace
     if command -v colcon >/dev/null 2>&1; then
-        colcon build --packages-up-to healthcare_demo --symlink-install || {
+        colcon build --symlink-install || {
             echo "First attempt failed; trying full rebuild..."
             colcon build --symlink-install || { echo "colcon build failed twice. Aborting."; exit 1; }
         }
@@ -293,10 +295,26 @@ USE_INFLUXDB="${USE_INFLUXDB:-0}"  # 1=enable InfluxDB bridge for web visualizat
 MANAGE_DOCKER="${MANAGE_DOCKER:-1}"  # 1=automatically start/stop Docker services, 0=manual
 ENCRYPTED_ENV="${ENCRYPTED_ENV:-0}"  # 1=use encrypted credentials, 0=use plain credentials
 
+# Production preset: simulator + online visualization
+if [ "$PRODUCTION" -eq 1 ]; then
+    RUN_NODE=1
+    USE_ACQUISITION=0
+    USE_INFLUXDB=1
+    MANAGE_DOCKER=1
+    VISUALIZATION_MODE=none
+fi
+
 # Start Docker Compose services if enabled
 if [ "$USE_INFLUXDB" -eq 1 ] && [ "$MANAGE_DOCKER" -eq 1 ]; then
     echo "Starting Docker Compose services (InfluxDB + Nginx)..."
-    if command -v docker-compose >/dev/null 2>&1; then
+    COMPOSE_CMD=()
+    if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+        COMPOSE_CMD=(docker compose)
+    elif command -v docker-compose >/dev/null 2>&1; then
+        COMPOSE_CMD=(docker-compose)
+    fi
+
+    if [ ${#COMPOSE_CMD[@]} -ne 0 ]; then
         cd "$PROJECT_ROOT" || exit 1
         
         CREDENTIALS_DIR="$PROJECT_ROOT/env_credentials"
@@ -368,21 +386,21 @@ if [ "$USE_INFLUXDB" -eq 1 ] && [ "$MANAGE_DOCKER" -eq 1 ]; then
             exit 1
         }
         
-        docker-compose up -d
+        "${COMPOSE_CMD[@]}" up -d
         echo "Waiting for services to be ready..."
         sleep 3
         
         # Check if services are running
-        if docker-compose ps | grep -q "Up"; then
+        if "${COMPOSE_CMD[@]}" ps | grep -q "Up"; then
             echo "✅ Docker services started successfully"
             echo "   - InfluxDB: http://localhost:8086"
             echo "   - Dashboard: http://localhost:8080"
         else
-            echo "❌ Docker services failed to start. Check: docker-compose logs"
+            echo "❌ Docker services failed to start. Check: ${COMPOSE_CMD[*]} logs"
         fi
         cd "$WORKSPACE" || exit 1
     else
-        echo "⚠️  docker-compose not found. Install it with: sudo apt-get install docker-compose"
+        echo "⚠️  Docker Compose not found. Install Docker Compose v2 or docker-compose."
         echo "    Or disable automatic Docker management: MANAGE_DOCKER=0"
     fi
 fi
