@@ -95,7 +95,7 @@ from typing import List, Tuple
 
 
 import numpy as np
-from scipy.signal import decimate
+from scipy.signal import butter, decimate, sosfilt, sosfilt_zi
 import sys
 import os
 
@@ -164,7 +164,8 @@ class EEGPreprocessor(Node):
         self.declare_parameter("downsample_factor", 1)
         self.declare_parameter("round_precision", 3)
         self.declare_parameter("publish_topic", "/eeg/processed")
-        self.declare_parameter("buffer_duration", 6.0)  # Buffer duration in seconds for filtering (6s for 0.5 Hz)
+        self.declare_parameter("buffer_duration", 2.0)  # Buffer duration in seconds for filtering
+        self.declare_parameter("streaming_mode", True)
 
         # Load parameters
         self.l_freq = float(self.get_parameter("l_freq").value)
@@ -174,6 +175,7 @@ class EEGPreprocessor(Node):
         self.round_precision = int(self.get_parameter("round_precision").value)
         self.publish_topic = str(self.get_parameter("publish_topic").value)
         self.buffer_duration = float(self.get_parameter("buffer_duration").value)
+        self.streaming_mode = bool(self.get_parameter("streaming_mode").value)
 
         # Initialize data buffer for temporal filtering
         # We need enough samples for proper filtering (e.g., 2 seconds = 300 samples at 150 Hz)
@@ -182,6 +184,8 @@ class EEGPreprocessor(Node):
         self.num_channels = None
         self.info_published = False
         self.raw_info = None  # Store raw EEGInfo metadata
+        self.filter_sos = None
+        self.filter_state = None
         
         # Create QoS profile with transient local durability for EEGInfo (latching)
         info_qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
@@ -199,6 +203,7 @@ class EEGPreprocessor(Node):
 
         self.get_logger().info(f"EEGPreprocessor initialized. Buffer: {self.buffer_duration}s ({self.buffer_size} samples)")
         self.get_logger().info(f"Filtering: {self.l_freq}-{self.h_freq} Hz, Publishing to: {self.publish_topic}")
+        self.get_logger().info(f"Streaming mode: {'ON' if self.streaming_mode else 'OFF'}")
 
     def _on_raw_info(self, msg: EEGInfo) -> None:
         """
@@ -249,6 +254,10 @@ class EEGPreprocessor(Node):
             if not self.info_published and self.num_channels is not None:
                 self.publish_eeg_info()
                 self.info_published = True
+
+            if self.streaming_mode:
+                self._process_message(eeg_array, msg)
+                return
             
             # Add to buffer
             self.data_buffer.append((eeg_array, msg))
@@ -286,6 +295,11 @@ class EEGPreprocessor(Node):
             )
             
             # Split back into individual messages and publish
+            last_msg = self.data_buffer[-1][1]
+            last_ns = last_msg.header.stamp.sec * 1_000_000_000 + last_msg.header.stamp.nanosec
+            now_ns = self.get_clock().now().nanoseconds
+            time_shift_ns = max(0, now_ns - last_ns)
+
             current_idx = 0
             for eeg_array, original_msg in self.data_buffer:
                 segment_length = eeg_array.shape[1]
@@ -306,6 +320,10 @@ class EEGPreprocessor(Node):
                 # Prepare output message
                 out = EEG()
                 out.header = original_msg.header
+                original_ns = original_msg.header.stamp.sec * 1_000_000_000 + original_msg.header.stamp.nanosec
+                shifted_ns = original_ns + time_shift_ns
+                out.header.stamp.sec = int(shifted_ns // 1_000_000_000)
+                out.header.stamp.nanosec = int(shifted_ns % 1_000_000_000)
                 out.session_id = original_msg.session_id
                 out.sample_size = int(processed_segment.shape[1])
                 out.eeg = [float(x) for x in processed_segment.flatten().tolist()]
@@ -336,6 +354,73 @@ class EEGPreprocessor(Node):
             self.get_logger().error(traceback.format_exc())
             # Clear buffer on error to prevent accumulation
             self.data_buffer.clear()
+
+    def _init_streaming_filter(self, num_channels: int) -> None:
+        """Initialize streaming bandpass filter state."""
+        nyq = self.sampling_rate / 2.0
+        low = self.l_freq / nyq
+        high = self.h_freq / nyq
+        if low <= 0 or high >= 1:
+            raise ValueError(f"Invalid filter frequencies: {self.l_freq}-{self.h_freq} Hz for sfreq={self.sampling_rate}")
+
+        self.filter_sos = butter(4, [low, high], btype='band', output='sos')
+        base_zi = sosfilt_zi(self.filter_sos)
+        self.filter_state = np.repeat(base_zi[:, None, :], num_channels, axis=1)
+
+    def _process_message(self, eeg_array: np.ndarray, original_msg: EEG) -> None:
+        """Process and publish a single EEG message in streaming mode."""
+        try:
+            if self.filter_sos is None or self.filter_state is None:
+                self._init_streaming_filter(eeg_array.shape[0])
+
+            # Apply common average reference first
+            referenced = self.tools.apply_common_average_reference_numpy(eeg_array)
+
+            # Apply streaming bandpass filter with state
+            filtered, self.filter_state = sosfilt(
+                self.filter_sos,
+                referenced,
+                zi=self.filter_state,
+                axis=1
+            )
+
+            processed_segment = filtered
+
+            # Optionally downsample
+            if self.downsample_factor and self.downsample_factor > 1:
+                processed_segment = decimate(processed_segment, self.downsample_factor, axis=1, zero_phase=True)
+
+            # Round to reduce payload size
+            if self.round_precision >= 0:
+                factor = 10 ** self.round_precision
+                processed_segment = np.round(processed_segment * factor) / factor
+
+            # Prepare output message
+            out = EEG()
+            out.header = original_msg.header
+            out.session_id = original_msg.session_id
+            out.sample_size = int(processed_segment.shape[1])
+            out.eeg = [float(x) for x in processed_segment.flatten().tolist()]
+
+            # Copy quality scores
+            try:
+                quality = list(original_msg.quality)
+                if quality:
+                    if len(quality) == processed_segment.shape[0]:
+                        out.quality = [float(round(q, 2)) for q in quality]
+                    else:
+                        avgq = float(round(sum(map(float, quality)) / max(len(quality), 1), 2))
+                        out.quality = [avgq for _ in range(processed_segment.shape[0])]
+                else:
+                    out.quality = []
+            except Exception:
+                out.quality = []
+
+            self.pub.publish(out)
+        except Exception as e:
+            self.get_logger().error(f"Error processing EEG message (streaming): {e}")
+            import traceback
+            self.get_logger().error(traceback.format_exc())
     
     def publish_eeg_info(self):
         """

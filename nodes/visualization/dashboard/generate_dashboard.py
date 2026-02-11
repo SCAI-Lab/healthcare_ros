@@ -6,8 +6,7 @@ Generates the InfluxDB real-time dashboard HTML file by injecting credentials fr
 into the template. This ensures credentials are never hardcoded in version-controlled files.
 
 Process:
-1. Reads credentials from env_credentials/.env.influxdb (preferred)
-    or falls back to .env (legacy)
+1. Reads credentials from env_credentials/.env.influxdb 
 2. Loads HTML template from nodes/visualization/dashboard/influxdb_realtime_dashboard.template.html
 3. Replaces placeholders with actual credentials
 4. Writes generated dashboard to nodes/visualization/dashboard/influxdb_realtime_dashboard.html (git-ignored)

@@ -153,48 +153,47 @@ class EEGSimulator(Node):
         
         # === REALISTIC NOISE COMPONENTS ===
         
-        # 1. White noise (continuous background) - 2-5 μV
-        white_noise = random.gauss(0, 3.0)
+        # 1. White noise (continuous background) - 1-3 μV
+        white_noise = random.gauss(0, 2.0)
         
-        # 2. Low-frequency drift and DC offset - will be removed by high-pass filter
-        # Add significant DC offset that varies per channel
-        dc_offset = 20.0 * (channel + 1)  # 20, 40, 60, 80 μV per channel
-        drift = dc_offset + 10.0 * math.sin(2 * math.pi * 0.05 * time_sec)  # 0.05 Hz slow drift
+        # 2. Low-frequency drift and minimal DC offset (keep baseline near zero)
+        dc_offset = 0.0
+        drift = dc_offset + 2.0 * math.sin(2 * math.pi * 0.05 * time_sec)  # 0.05 Hz slow drift
         
         # 3. 50 Hz powerline interference (European standard)
-        powerline = 1.5 * math.sin(2 * math.pi * 50 * time_sec)
+        powerline = 0.8 * math.sin(2 * math.pi * 50 * time_sec)
         
         # 4. Common-mode noise affecting all channels (removed by CAR)
-        common_mode_noise = 5.0 * math.sin(2 * math.pi * 0.3 * time_sec)
+        common_mode_noise = 2.0 * math.sin(2 * math.pi * 0.3 * time_sec)
         
         # 5. Muscle artifacts (EMG) - random bursts, more when eyes open
-        muscle_probability = 0.08 if self.eyes_open else 0.03
+        muscle_probability = 0.03 if self.eyes_open else 0.01
         if random.random() < muscle_probability:
-            muscle_artifact = random.gauss(0, 20)  # 20 μV bursts
+            muscle_artifact = random.gauss(0, 10)  # 10 μV bursts
         else:
             muscle_artifact = 0
         
-        # 5. Eye movement artifacts - MUCH stronger in prefrontal channels (FP1, FP2)
+        # 5. Eye movement artifacts - stronger in prefrontal channels (FP1, FP2)
         if is_prefrontal and self.eyes_open:
             # Eye movements and blinks when eyes open
-            if random.random() < 0.03:  # 3% chance of eye movement
-                eye_artifact = random.gauss(0, 50)  # 50-100 μV (very large!)
-            elif random.random() < 0.015:  # 1.5% chance of blink
-                eye_artifact = random.gauss(0, 80)  # Blinks are even larger
+            if random.random() < 0.01:  # 1% chance of eye movement
+                eye_artifact = random.gauss(0, 30)
+            elif random.random() < 0.005:  # 0.5% chance of blink
+                eye_artifact = random.gauss(0, 50)
             else:
                 eye_artifact = 0
         elif is_prefrontal and not self.eyes_open:
             # Occasional slow eye movements even with closed eyes
-            if random.random() < 0.01:
-                eye_artifact = random.gauss(0, 25)
+            if random.random() < 0.005:
+                eye_artifact = random.gauss(0, 15)
             else:
                 eye_artifact = 0
         else:
             # F3, F4 less affected by eye artifacts
-            eye_artifact = random.gauss(0, 5) if random.random() < 0.01 else 0
+            eye_artifact = random.gauss(0, 3) if random.random() < 0.005 else 0
         
         # 6. Channel-specific noise (prefrontal channels are noisier)
-        channel_noise_factor = 1.4 if is_prefrontal else 1.0
+        channel_noise_factor = 1.2 if is_prefrontal else 1.0
         
         return (signal + white_noise + drift + powerline + muscle_artifact + eye_artifact + common_mode_noise) * channel_noise_factor
     

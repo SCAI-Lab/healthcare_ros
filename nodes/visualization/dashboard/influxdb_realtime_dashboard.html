@@ -50,9 +50,8 @@
     </style>
 </head>
 <body>
-    <div class="page-title">🧠 Raw (bold) vs Preprocessed (thin)</div>
+    <div class="page-title">🧠 Raw (thin) vs Preprocessed (bold)</div>
     <div class="status">
-        <div class="status-badge"><span class="status-label">Samples</span><span id="sample-count" class="status-value">0</span></div>
         <div class="status-badge"><span class="status-label">Simulator</span><span id="sim-rate" class="status-value">-- Hz</span></div>
     </div>
 
@@ -92,14 +91,16 @@
         const INFLUXDB_TOKEN = 'hc-eeg-secure-t0ken!2026@api';
         const INFLUXDB_ORG = 'healthcare';
         const INFLUXDB_BUCKET = 'eeg_data';
-        const DATA_POLL_INTERVAL_MS = 50; // Influx query interval
-        const TARGET_RENDER_HZ = 100; // Best-effort render target (limited by display refresh)
-        const MIN_RENDER_INTERVAL_MS = 1000 / TARGET_RENDER_HZ;
-        const MAX_DATA_POINTS = 300;  // 2 seconds at 150 Hz = 300 samples
-        const TIME_WINDOW_SECONDS = 2;  // Display window: 2 seconds
-        const DOWNSAMPLE_EVERY_MS = 20;  // Reduce payload and CPU
-        const QUERY_OVERLAP_MS = 100;  // Avoid gaps between fetches
         const SIMULATOR_RATE_HZ = 150;
+        const DATA_POLL_INTERVAL_MS = 200; // Influx query interval
+        const TARGET_RENDER_HZ = 60; // Best-effort render target (limited by display refresh)
+        const MIN_RENDER_INTERVAL_MS = 1000 / TARGET_RENDER_HZ;
+        const TIME_WINDOW_SECONDS = 2;  // Display window: fixed 2 seconds
+        const WINDOW_DELAY_SECONDS = 0;  // Show latest window (no delay)
+        const MAX_GAP_MS = 200;  // Break lines when points are too far apart
+        const MAX_DATA_POINTS = Math.ceil(SIMULATOR_RATE_HZ * TIME_WINDOW_SECONDS) + 100;
+        const DOWNSAMPLE_EVERY_MS = 0;  // 0 disables aggregation (plot all samples)
+        const QUERY_OVERLAP_MS = 800;  // Wider overlap to backfill missed points
         
         const CHANNELS = ['FP1', 'FP2', 'F3', 'F4'];
         const CHANNEL_MAP = { 'FP1': ['FP1', 'CH1'], 'FP2': ['FP2', 'CH2'], 'F3': ['F3', 'CH3'], 'F4': ['F4', 'CH4'] };
@@ -107,9 +108,9 @@
         let inFlight = false;
         let needsRender = false;
         let lastRenderTime = 0;
-        const lastFetchTime = { raw: 0, preprocessed: 0 };
+        let lastDataTimeMs = 0;
+        let lastWindowNowMs = 0;
 
-        const sampleCountEl = document.getElementById('sample-count');
         const simRateEl = document.getElementById('sim-rate');
         if (simRateEl) simRateEl.textContent = `${SIMULATOR_RATE_HZ} Hz`;
 
@@ -122,9 +123,10 @@
                         {
                             label: channel + ' (Raw)',
                             data: [],
-                            borderColor: getChannelColor(channel),
-                            backgroundColor: getChannelColor(channel, 0.1),
-                            borderWidth: 2.5,
+                            borderColor: getChannelColor(channel, 0.35),
+                            backgroundColor: getChannelColor(channel, 0.03),
+                            borderWidth: 1,
+                            borderDash: [6, 4],
                             tension: 0.1,
                             pointRadius: 0,
                             fill: false
@@ -132,9 +134,9 @@
                         {
                             label: channel + ' (Preprocessed)',
                             data: [],
-                            borderColor: getChannelColor(channel, 0.5),
-                            backgroundColor: getChannelColor(channel, 0.05),
-                            borderWidth: 1,
+                            borderColor: getChannelColor(channel, 1.0),
+                            backgroundColor: getChannelColor(channel, 0.08),
+                            borderWidth: 3,
                             tension: 0.1,
                             pointRadius: 0,
                             fill: false
@@ -160,8 +162,8 @@
                                 color: '#94a3b8', 
                                 font: { size: 9 },
                                 maxTicksLimit: 8,
-                                callback: (value) => {
-                                    const windowStart = Date.now() - (TIME_WINDOW_SECONDS * 1000);
+                                callback: function(value) {
+                                    const windowStart = this.min ?? value;
                                     return ((value - windowStart) / 1000).toFixed(1);
                                 }
                             }
@@ -193,23 +195,25 @@
             return colors[channel] || `rgba(148, 163, 184, ${alpha})`;
         }
 
-        function buildQuery(measurement, startTimeMs) {
+                function buildQuery(measurement, startTimeMs) {
             const startIso = new Date(startTimeMs).toISOString();
-            return `from(bucket: "${INFLUXDB_BUCKET}")
-  |> range(start: time(v: "${startIso}"))
-  |> filter(fn: (r) => r["_measurement"] == "${measurement}")
-  |> filter(fn: (r) => r["_field"] == "value")
-  |> aggregateWindow(every: ${DOWNSAMPLE_EVERY_MS}ms, fn: mean, createEmpty: false)
-  |> keep(columns: ["_time", "_value", "channel"])
-  |> sort(columns: ["_time"])
-  |> group(columns: ["channel"])`;
+                        const aggregate = DOWNSAMPLE_EVERY_MS > 0
+                                ? `  |> aggregateWindow(every: ${DOWNSAMPLE_EVERY_MS}ms, fn: mean, createEmpty: false)\n`
+                                : '';
+                        return `from(bucket: "${INFLUXDB_BUCKET}")
+    |> range(start: time(v: "${startIso}"))
+    |> filter(fn: (r) => r["_measurement"] == "${measurement}")
+    |> filter(fn: (r) => r["_field"] == "value")
+${aggregate}  |> keep(columns: ["_time", "_value", "channel"])
+    |> sort(columns: ["_time"])
+    |> group(columns: ["channel"])`;
         }
 
         async function fetchMeasurement(measurement, datasetIndex, lastKey) {
             const now = Date.now();
-            const windowStart = now - (TIME_WINDOW_SECONDS * 1000);
-            const lastTime = lastFetchTime[lastKey];
-            const startTime = Math.max(windowStart, lastTime - QUERY_OVERLAP_MS);
+            const windowEnd = (lastDataTimeMs > 0 ? lastDataTimeMs : now) - (WINDOW_DELAY_SECONDS * 1000);
+            const windowStart = windowEnd - (TIME_WINDOW_SECONDS * 1000) - QUERY_OVERLAP_MS;
+            const startTime = Math.max(0, windowStart);
             const query = buildQuery(measurement, startTime);
 
             const response = await fetch(`${INFLUXDB_URL}/api/v2/query?org=${INFLUXDB_ORG}`, {
@@ -226,7 +230,9 @@
 
             const csv = await response.text();
             const maxTime = parseAndUpdateCharts(csv, datasetIndex);
-            if (maxTime > 0) lastFetchTime[lastKey] = Math.max(lastFetchTime[lastKey], maxTime);
+            if (maxTime > 0) {
+                lastDataTimeMs = Math.max(lastDataTimeMs, maxTime);
+            }
         }
 
         async function fetchData() {
@@ -299,24 +305,34 @@
                 const timeMs = timestamp.getTime();
                 if (timeMs > maxTime) maxTime = timeMs;
 
-                if (!channelData[channel]) channelData[channel] = [];
-                channelData[channel].push({
-                    time: timeMs,
-                    value: value
-                });
+                if (!channelData[channel]) channelData[channel] = new Map();
+                channelData[channel].set(timeMs, value);
             }
 
             let anyNewData = false;
 
             CHANNELS.forEach(channel => {
-                if (!channelData[channel] || channelData[channel].length === 0) return;
+                const pointMap = channelData[channel];
+                if (!pointMap || pointMap.size === 0) return;
                 
                 const chart = charts[channel];
                 const dataset = chart.data.datasets[datasetIndex];
 
-                channelData[channel].forEach(point => {
-                    dataset.data.push({ x: point.time, y: point.value });
+                const sortedPoints = Array.from(pointMap.entries())
+                    .sort((a, b) => a[0] - b[0])
+                    .map(([time, value]) => ({ time, value }));
+
+                const withGaps = [];
+                let lastTime = null;
+                sortedPoints.forEach(point => {
+                    if (lastTime !== null && point.time - lastTime > MAX_GAP_MS) {
+                        withGaps.push({ x: point.time, y: null });
+                    }
+                    withGaps.push({ x: point.time, y: point.value });
+                    lastTime = point.time;
                 });
+
+                dataset.data = withGaps;
                 anyNewData = true;
             });
 
@@ -327,7 +343,35 @@
 
         function renderCharts(now) {
             if (now - lastRenderTime >= MIN_RENDER_INTERVAL_MS && needsRender) {
-                const nowMs = Date.now();
+                let latestRaw = 0;
+                let latestProcessed = 0;
+
+                CHANNELS.forEach(channel => {
+                    const chart = charts[channel];
+                    const rawDataset = chart.data.datasets[0];
+                    const processedDataset = chart.data.datasets[1];
+
+                    if (rawDataset.data.length > 0) {
+                        const lastPoint = rawDataset.data[rawDataset.data.length - 1];
+                        if (lastPoint.x > latestRaw) latestRaw = lastPoint.x;
+                    }
+
+                    if (processedDataset.data.length > 0) {
+                        const lastPoint = processedDataset.data[processedDataset.data.length - 1];
+                        if (lastPoint.x > latestProcessed) latestProcessed = lastPoint.x;
+                    }
+                });
+
+                let nowMs = Math.max(
+                    latestRaw || 0,
+                    latestProcessed || 0,
+                    lastDataTimeMs || 0
+                );
+
+                if (nowMs === 0) nowMs = Date.now();
+                nowMs -= WINDOW_DELAY_SECONDS * 1000;
+                if (nowMs < lastWindowNowMs) nowMs = lastWindowNowMs;
+                lastWindowNowMs = nowMs;
                 const cutoffTime = nowMs - (TIME_WINDOW_SECONDS * 1000);
 
                 CHANNELS.forEach(channel => {
@@ -346,12 +390,6 @@
                     chart.options.scales.x.max = nowMs;
                     chart.update('none');
                 });
-
-                if (sampleCountEl) {
-                    const refChannel = CHANNELS[0];
-                    const refDataset = charts[refChannel]?.data?.datasets?.[0]?.data || [];
-                    sampleCountEl.textContent = refDataset.length.toString();
-                }
 
                 needsRender = false;
                 lastRenderTime = now;

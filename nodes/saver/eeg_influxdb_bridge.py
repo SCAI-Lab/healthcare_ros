@@ -75,6 +75,7 @@ class EEGInfluxDBBridge(Node):
             self.get_logger().warn('INFLUXDB_TOKEN not set. Using empty token (may fail for authenticated instances)')
         
         # Data retention configuration (default: 5 minutes for production)
+        # Set to 0 or negative to disable auto-cleanup.
         self.retention_minutes = int(os.getenv('INFLUXDB_RETENTION_MINUTES', '5'))
         
         # Initialize InfluxDB client
@@ -88,7 +89,10 @@ class EEGInfluxDBBridge(Node):
             self.delete_api = self.influx_client.delete_api()
             self.get_logger().info(f'Connected to InfluxDB at {self.influx_url}')
             self.get_logger().info(f'Writing to bucket: {self.influx_bucket}')
-            self.get_logger().info(f'Data retention: {self.retention_minutes} minutes (auto-cleanup enabled)')
+            if self.retention_minutes > 0:
+                self.get_logger().info(f'Data retention: {self.retention_minutes} minutes (auto-cleanup enabled)')
+            else:
+                self.get_logger().info('Data retention: disabled (auto-cleanup off)')
         except Exception as e:
             self.get_logger().error(f'Failed to connect to InfluxDB: {e}')
             raise
@@ -141,12 +145,20 @@ class EEGInfluxDBBridge(Node):
         )
         
         # Create timer for automatic data cleanup (every 60 seconds)
-        self.cleanup_timer = self.create_timer(60.0, self.cleanup_old_data)
+        if self.retention_minutes > 0:
+            self.cleanup_timer = self.create_timer(60.0, self.cleanup_old_data)
+        else:
+            self.cleanup_timer = None
         
         self.get_logger().info('EEG InfluxDB Bridge started')
         self.get_logger().info('Subscribed to: /eeg/raw, /eeg/raw_info, /eeg/processed, /eeg/processed_info')
         self.get_logger().info('View data at: ' + self.influx_url)
-        self.get_logger().info(f'Auto-cleanup: Running every 60s, deleting data older than {self.retention_minutes} minutes')
+        if self.retention_minutes > 0:
+            self.get_logger().info(
+                f'Auto-cleanup: Running every 60s, deleting data older than {self.retention_minutes} minutes'
+            )
+        else:
+            self.get_logger().info('Auto-cleanup: Disabled')
     
     def raw_info_callback(self, msg: EEGInfo):
         """Store raw EEG metadata for enriching data points."""
@@ -286,6 +298,8 @@ class EEGInfluxDBBridge(Node):
     
     def cleanup_old_data(self):
         """Delete data older than retention period (default: 5 minutes)."""
+        if self.retention_minutes <= 0:
+            return
         try:
             # Calculate time threshold
             stop_time = datetime.utcnow()
@@ -322,7 +336,7 @@ class EEGInfluxDBBridge(Node):
     
     def destroy_node(self):
         """Clean up InfluxDB connection."""
-        if hasattr(self, 'cleanup_timer'):
+        if hasattr(self, 'cleanup_timer') and self.cleanup_timer is not None:
             self.cleanup_timer.cancel()
         if hasattr(self, 'write_api'):
             self.write_api.close()
