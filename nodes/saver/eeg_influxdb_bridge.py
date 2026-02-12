@@ -3,21 +3,20 @@
 EEG InfluxDB Bridge Node
 
 Bridges ROS2 EEG topics to InfluxDB time-series database for real-time web visualization.
-Subscribes to both /eeg/raw and /eeg/processed topics and writes data points with statistics.
+Subscribes to both /eeg/raw and /eeg/processed topics and writes per-sample data points.
 
 Features:
 - Real-time data streaming at 150 Hz sampling rate
-- Per-channel statistics: mean, min, max, frame_length
-- Supports both raw and preprocessed EEG streams
-- Batch writing for optimal performance (every 50 messages)
+- Per-sample point writes for raw and preprocessed streams
+- Batch writing for optimal performance
 - Docker-compatible (connects to containerized InfluxDB)
 - **Auto-cleanup: Deletes data older than 5 minutes (configurable)**
 
 Data Storage:
-- Measurement: 'eeg_raw' - Raw EEG samples with statistics
-- Measurement: 'eeg_preprocessed' - Filtered EEG samples with statistics
+- Measurement: 'eeg_raw' - Raw EEG samples (per-sample values)
+- Measurement: 'eeg_preprocessed' - Filtered EEG samples (per-sample values)
 - Tags: channel (FP1, FP2, F3, F4), session_id
-- Fields: mean, min, max, frame_length per channel
+- Fields: value per sample
 
 Configuration (environment variables or .env file):
 - INFLUXDB_URL: Server URL (default: http://localhost:8086)
@@ -35,7 +34,7 @@ Production Usage (with auto-cleanup):
 
 Web Dashboard:
     Access at http://localhost:8080 (served by Nginx)
-    Dashboard refreshes at 150 Hz (6.67ms intervals)
+    Dashboard polls every 50ms (best-effort render)
 """
 
 import os

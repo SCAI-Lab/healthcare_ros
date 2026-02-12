@@ -146,7 +146,7 @@ def find_latest_rosbag(eeg_data_dir):
     return None
 
 
-def plot_selected_channels(times, raw_eeg, preprocessed_eeg, channel_names, channels_to_plot, save_path=None, data_source=""):
+def plot_selected_channels(times, raw_eeg, preprocessed_eeg, channel_names, channels_to_plot, save_path=None, data_source="", sampling_rate=256):
     """
     Plot raw and preprocessed EEG data for selected channels.
     If save_path is provided, saves the figure instead of showing it.
@@ -168,7 +168,7 @@ def plot_selected_channels(times, raw_eeg, preprocessed_eeg, channel_names, chan
         plt.subplot(len(channels_to_plot), 1, idx+1)
         plt.plot(times, raw_eeg[idx], label=f'Raw {channel_names[ch]}', alpha=0.7, linewidth=1.5)
         plt.plot(times, preprocessed_eeg[idx], label=f'Preprocessed {channel_names[ch]}', alpha=0.7, linewidth=1.5)
-        plt.title(f'Channel {channel_names[ch]} (Sampling Rate: 256 Hz)', fontweight='bold')
+        plt.title(f'Channel {channel_names[ch]} (Sampling Rate: {sampling_rate} Hz)', fontweight='bold')
         plt.xlabel('Time (s)', fontweight='bold')
         plt.ylabel('EEG Value (uV)', fontweight='bold')
         plt.legend(loc='upper right')
@@ -265,7 +265,7 @@ def plot_eeg_data(eeg_data_dir, plots_dir, use_rosbag=False, channels_to_plot=No
     
     # Plot and save
     plot_selected_channels(times, raw_eeg, preprocessed_eeg, channel_names, 
-                          channels_to_plot, save_path, data_source)
+                          channels_to_plot, save_path, data_source, sampling_rate)
     
     print(f"Successfully plotted {seconds_to_plot} seconds of EEG data")
     return True

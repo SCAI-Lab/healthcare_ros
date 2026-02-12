@@ -124,21 +124,19 @@ class EEGPreprocessor(Node):
 
     Signal Processing Pipeline:
     1. Bandpass filter (0.5-45 Hz) - Remove DC drift and high-frequency noise
-    2. Notch filter (50/60 Hz) - Remove powerline interference
-    3. Common Average Reference (CAR) - Spatial filtering across channels
-    4. Quality validation - Ensure signal quality before publishing
+    2. Common Average Reference (CAR) - Spatial filtering across channels
 
     Features:
     - 150 Hz sampling rate (configurable)
-    - 6-second circular buffer (900 samples) for stable filtering
+    - Streaming mode with per-message filtering
+    - Optional buffer mode for batch filtering
     - Per-channel processing with quality tracking
     - Latched metadata publishing on /eeg/processed_info
 
     Parameters (ROS2):
     - sampling_rate: Input sampling rate (default: 150.0 Hz)
-    - lowcut: Highpass cutoff (default: 0.5 Hz)
-    - highcut: Lowpass cutoff (default: 45.0 Hz)
-    - notch_freq: Powerline frequency (default: 50.0 Hz)
+    - l_freq: Highpass cutoff (default: 0.5 Hz)
+    - h_freq: Lowpass cutoff (default: 45.0 Hz)
     - output_topic: Processed data topic (default: /eeg/processed)
 
     Topics:
@@ -148,7 +146,7 @@ class EEGPreprocessor(Node):
     Usage:
         python3 eeg_preprocessing.py
         # Or with custom parameters:
-        ros2 run healthcare_demo eeg_preprocessing --ros-args -p sampling_rate:=256.0
+        ros2 run healthcare_ros eeg_preprocessing --ros-args -p sampling_rate:=150.0
     """
     def __init__(self):
         """

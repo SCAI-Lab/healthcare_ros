@@ -14,7 +14,7 @@ This will:
 - Install missing Python dependencies (numpy, scipy, matplotlib, mne, etc.)
 - Build workspace packages if needed
 - Start the complete 4-node EEG pipeline:
-  1. **EEG Simulator**, **Neurosity Driver**, or **OpenBCI Driver** (depending on SIMULATE flag or device)
+  1. **EEG Simulator**, **Neurosity Driver**, or **OpenBCI Driver** (depending on USE_ACQUISITION or device)
   2. **Raw EEG Saver** - saves to `eeg_data/eeg_raw_data.jsonl`
   3. **EEG Preprocessor** - applies bandpass filter (0.5-45 Hz) and CAR
   4. **Preprocessed EEG Saver** - saves to `eeg_data/eeg_preprocessed_data.jsonl`
@@ -36,7 +36,7 @@ Control script behavior with these variables:
 | `VENV_PATH` | `~/hcmd-venv` | Path to Python virtual environment |
 | `WORKSPACE` | `~/ros2_ws` | Path to ROS2 workspace |
 | `ROS_DISTRO` | `jazzy` | ROS2 distribution name |
-| `VISUALIZATION_MODE` | `none` | Set to `comparison` for offline plotting, `rqt` for live visualization |
+| `VISUALIZATION_MODE` | `none` | Set to `comparison` for offline plotting |
 | `PRODUCTION` | `0` | Production preset: simulator + online visualization |
 
 ## Common Usage Examples
@@ -99,11 +99,6 @@ USE_ACQUISITION=0 VISUALIZATION_MODE=comparison ./launch/start.sh
 USE_ACQUISITION=0 USE_ROSBAG=1 ./launch/start.sh
 ```
 *Records all topics to MCAP format in `nodes/rosbag_data/`. View with `ros2 bag info nodes/rosbag_data/`*
-
-### Launch rqt for live visualization
-```bash
-./launch/start.sh rqt
-```
 
 ### Run automated tests (unit + integration)
 ```bash
@@ -193,13 +188,7 @@ Generates side-by-side comparison of raw vs preprocessed data:
 ```bash
 VISUALIZATION_MODE=comparison ./launch/start.sh
 # Or run directly:
-python3 nodes/visualization/plot_eeg_comparison.py
-```
-
-### Live rqt Plugin
-Launch rqt with the EEG visualization plugin:
-```bash
-./launch/start.sh rqt
+python3 nodes/visualization/plotting/plot_eeg_comparison.py
 ```
 
 ### Online dashboard (InfluxDB + Nginx)

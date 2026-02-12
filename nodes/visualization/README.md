@@ -1,4 +1,4 @@
-NA by EMail without the help of the documents 2# EEG Visualization
+# EEG Visualization
 
 This folder contains all visualization tools for the EEG healthcare system.
 
@@ -22,14 +22,12 @@ This reads credentials from `env_credentials/.env.influxdb` and generates the da
 
 The dashboard is served by Nginx (Docker):
 - **URL:** http://localhost:8080
-- **Refresh Rate:** 150 Hz (6.67ms intervals)
+- **Polling:** 50ms (best-effort render)
 - **Data:** Real-time EEG from InfluxDB
 
 **Features:**
 - 4-channel visualization (FP1, FP2, F3, F4)
-- Statistics per channel: mean, min, max, samples
-- Toggle between raw and preprocessed data
-- Live latency monitoring
+- Raw and preprocessed overlays
 
 ## Offline Plotting Tools
 
@@ -37,21 +35,13 @@ The dashboard is served by Nginx (Docker):
 Generate comparison plots of raw vs preprocessed EEG data from JSONL files.
 
 ```bash
-python3 nodes/visualization/plot_eeg_comparison.py
+python3 nodes/visualization/plotting/plot_eeg_comparison.py
 ```
 
 **Output:** `plots/eeg_comparison_XXX.svg`
 
 ### plot_eeg_offline.py
 Alternative offline plotting tool.
-
-## RQT Plugin (Optional)
-
-The `eeg_visualization_rqt/` folder contains a ROS2 RQT plugin for live EEG visualization.
-
-**Note:** Currently disabled (COLCON_IGNORE) - Use web dashboard for real-time visualization.
-
----
 
 ## Docker Integration
 

@@ -65,7 +65,7 @@ def get_next_plot_number(plots_dir):
     
     return max(numbers) + 1 if numbers else 1
 
-def plot_selected_channels(times, raw_eeg, preprocessed_eeg, channel_names, channels_to_plot, save_path=None):
+def plot_selected_channels(times, raw_eeg, preprocessed_eeg, channel_names, channels_to_plot, save_path=None, sampling_rate=150):
     """
     Plot raw and preprocessed EEG data for selected channels.
     
@@ -75,14 +75,13 @@ def plot_selected_channels(times, raw_eeg, preprocessed_eeg, channel_names, chan
         preprocessed_eeg: List of preprocessed EEG data arrays (one per channel)
         channel_names: List of channel names (e.g., ['FP1', 'FP2', 'F3', 'F4'])
         channels_to_plot: Indices of channels to plot
-        plt.title(f'Channel {channel_names[ch]} (Sampling Rate: 150 Hz)', fontsize=18, fontweight='bold')
     """
     plt.figure(figsize=(15, 8))
     for idx, ch in enumerate(channels_to_plot):
         plt.subplot(len(channels_to_plot), 1, idx+1)
         plt.plot(times, raw_eeg[idx], label=f'Raw {channel_names[ch]}', alpha=0.7, linewidth=2)
         plt.plot(times, preprocessed_eeg[idx], label=f'Preprocessed {channel_names[ch]}', alpha=0.7, linewidth=2)
-        plt.title(f'Channel {channel_names[ch]} (Sampling Rate: 256 Hz)', fontsize=18, fontweight='bold')
+        plt.title(f'Channel {channel_names[ch]} (Sampling Rate: {sampling_rate} Hz)', fontsize=18, fontweight='bold')
         plt.xlabel('Time (s)', fontsize=16, fontweight='bold')
         plt.ylabel('EEG Value (uV)', fontsize=16, fontweight='bold')
         plt.legend(fontsize=14, loc='best')
@@ -151,7 +150,7 @@ def plot_raw_vs_preprocessed(raw_data_path, preprocessed_data_path, channels_to_
             samples_read += sample_size
     
     times = np.arange(len(raw_eeg[0])) / sampling_rate
-    plot_selected_channels(times, raw_eeg, preprocessed_eeg, channel_names, channels_to_plot, save_path)
+    plot_selected_channels(times, raw_eeg, preprocessed_eeg, channel_names, channels_to_plot, save_path, sampling_rate=sampling_rate)
 
 
 """

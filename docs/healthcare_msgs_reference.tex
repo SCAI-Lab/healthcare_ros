@@ -49,11 +49,11 @@ session\_id & string & eeg\_simulator & ``sim\_session\_001'' \\
 \cline{3-4}
  & & eeg\_preprocessor & Copied from input \\
 \hline
-sample\_size & uint16 & eeg\_simulator & 64 samples per message \\
+sample\_size & uint16 & eeg\_simulator & 30 samples per message \\
 \cline{3-4}
  & & eeg\_preprocessor & Same as input (or reduced if downsampled) \\
 \hline
-eeg & float32[] & eeg\_simulator & 256 values (4 ch × 64 samples). Simulated alpha (10 Hz), beta (20 Hz), theta (6 Hz) waves + noise (white, drift, 50 Hz powerline, muscle, eye blinks) \\
+eeg & float32[] & eeg\_simulator & 120 values (4 ch × 30 samples). Simulated alpha (10 Hz), beta (20 Hz), theta (6 Hz) waves + noise (white, drift, 50 Hz powerline, muscle, eye blinks) \\
 \cline{3-4}
  & & eeg\_preprocessor & Processed: CAR + bandpass 0.5-45 Hz + optional downsample + round to 3 decimals \\
 \hline
@@ -311,9 +311,9 @@ session\_id & string & eeg\_simulator & ``sim\_session\_001'' \\
 \hline
 \textbf{Parameter} & \textbf{Default} & \textbf{Description} \\
 \hline
-sampling\_rate & 256 Hz & Sample rate for signal generation \\
+sampling\_rate & 150 Hz & Sample rate for signal generation \\
 num\_channels & 4 & Number of EEG channels \\
-samples\_per\_message & 64 & Samples per published message \\
+samples\_per\_message & 30 & Samples per published message \\
 channel\_names & [FP1, FP2, F3, F4] & Electrode labels \\
 \hline
 \end{longtable}
@@ -325,11 +325,11 @@ channel\_names & [FP1, FP2, F3, F4] & Electrode labels \\
 \hline
 l\_freq & 0.5 Hz & Low frequency cutoff (high-pass) \\
 h\_freq & 45.0 Hz & High frequency cutoff (low-pass) \\
-sampling\_rate & 256.0 Hz & Expected sampling rate \\
+sampling\_rate & 150.0 Hz & Expected sampling rate \\
 downsample\_factor & 1 & Downsampling factor (1 = no downsample) \\
 round\_precision & 3 & Decimal places for rounding \\
 publish\_topic & /eeg/processed & Output topic name \\
-buffer\_duration & 6.0 s & Buffer duration for filtering \\
+buffer\_duration & 2.0 s & Buffer duration for filtering \\
 \hline
 \end{longtable}
 

@@ -44,7 +44,7 @@ class TestEEGRosbagSaver(unittest.TestCase):
 # 1. source /opt/ros/jazzy/setup.bash
 # 2. source ~/ros2_msgs_ws/install/setup.bash
 # 3. source ~/ros2_ws/install/setup.bash
-# 4. SIMULATE=1 RUN_NODE=1 ./start.sh
+# 4. USE_ACQUISITION=0 RUN_NODE=1 ./launch/start.sh
 # 5. python3 -m unittest discover -s tests
 
 if __name__ == '__main__':

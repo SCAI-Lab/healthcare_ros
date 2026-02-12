@@ -38,7 +38,7 @@ Usage Example
 >>> raw = mne.io.read_raw_fif('data.fif', preload=True)
 >>> 
 >>> # Apply preprocessing chain
->>> filtered = tools.apply_bandpass_filter(raw, 0.5, 45.0, 256.0)
+>>> filtered = tools.apply_bandpass_filter(raw, 0.5, 45.0, 150.0)
 >>> referenced = tools.apply_car(filtered)
 >>> 
 >>> # ICA for artifact removal

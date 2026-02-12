@@ -59,7 +59,7 @@ Open: **http://localhost:8080**
 │         ↓                                                │
 │  Preprocessing (0.5-45 Hz bandpass, CAR)                │
 │         ↓                                                │
-│  InfluxDB Bridge (writes statistics to DB)              │
+│  InfluxDB Bridge (writes per-sample points)             │
 └─────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────┐
@@ -70,7 +70,7 @@ Open: **http://localhost:8080**
 │  │Port 8086     │         │  Port 8080      │          │
 │  └──────────────┘         └─────────────────┘          │
 │                                   ↓                      │
-│                         Web Dashboard (150 Hz)          │
+│                         Web Dashboard (poll 50ms)       │
 │                    http://localhost:8080                │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -79,7 +79,7 @@ Open: **http://localhost:8080**
 
 1. **EEG Simulator** generates 4-channel data at 150 Hz
 2. **Preprocessor** filters and applies CAR (Common Average Reference)
-3. **InfluxDB Bridge** writes statistics (mean, min, max, frame_length) to InfluxDB
+3. **InfluxDB Bridge** writes per-sample values to InfluxDB
 4. **Web Dashboard** queries InfluxDB and visualizes in real-time
 
 ---
@@ -118,10 +118,8 @@ Open browser: **http://localhost:8080**
 
 **Features:**
 - Real-time 4-channel EEG visualization
-- 150 Hz refresh rate (6.67ms)
-- Statistics: mean, min, max, samples per channel
-- Toggle raw/preprocessed data
-- Live latency monitoring
+- Raw and preprocessed overlays
+- Polling 50ms (best-effort rendering)
 
 ### Stop System
 
@@ -252,7 +250,7 @@ InfluxDB connection: `http://your-server-ip:8086`
 ## 📈 Performance
 
 - **Sampling Rate:** 150 Hz (realistic clinical EEG)
-- **Dashboard Refresh:** 6.67ms (150 Hz)
+- **Dashboard Polling:** 50ms (best-effort rendering)
 - **Data Window:** 2 seconds (300 samples)
 - **Channels:** 4 (FP1, FP2, F3, F4)
 - **Latency:** < 10ms typical

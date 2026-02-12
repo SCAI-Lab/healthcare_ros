@@ -456,7 +456,7 @@ class UnitTests:
         """Test that plot script has auto-numbering functionality."""
         from pathlib import Path
         workspace = Path(__file__).parent.parent.resolve()
-        plot_path = workspace / 'nodes' / 'visualization' / 'plot_eeg_comparison.py'
+        plot_path = workspace / 'nodes' / 'visualization' / 'plotting' / 'plot_eeg_comparison.py'
         
         if not plot_path.exists():
             return False

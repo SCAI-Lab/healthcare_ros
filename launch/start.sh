@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 
-# Native start script: activates venv, sources ROS2, builds workspace if needed, and can launch nodes or rqt.
+# Native start script: activates venv, sources ROS2, builds workspace if needed, and launches nodes.
 
 set -euo pipefail
 
@@ -21,71 +21,21 @@ usage() {
 Usage: $0 [options] [command]
 
 Commands:
-  run         Start neurosity_driver node (ros2 run neurosity_driver neurosity_driver)
-  rqt         Start rqt with correct overlays
-  help        Show this help
+    help        Show this help
 
 Environment variables:
-  VENV_PATH   Path to Python venv (default: $VENV_PATH)
-  WORKSPACE   Path to ROS2 workspace (default: $WORKSPACE)
-  ROS_DISTRO  ROS2 distro (default: $ROS_DISTRO)
+    VENV_PATH   Path to Python venv (default: $VENV_PATH)
+    WORKSPACE   Path to ROS2 workspace (default: $WORKSPACE)
+    ROS_DISTRO  ROS2 distro (default: $ROS_DISTRO)
     PRODUCTION  Enable production preset (simulator + online visualization)
-Commands:
-  run         Start the neurosity_driver node after setup (ros2 run)
-  help        Show this help message
-  rqt         Start rqt with correct ROS2 overlays
 
 Example:
-  ROS_DISTRO=humble VENV_PATH=~/venv $0 run
+    PRODUCTION=1 $0
 EOF
 }
 
 if [ "${1:-}" = "help" ] || [ "${1:-}" = "--help" ]; then
     usage
-    exit 0
-fi
-
-if [ "${1:-}" = "rqt" ]; then
-    echo "Cleaning Snap and VSCode environment variables for rqt..."
-    if [ "$VISUALIZATION_MODE" = "comparison" ]; then
-        echo "Starting offline EEG plotting script..."
-        # Get script directory and navigate to project root
-        SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-        PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-        python3 "$PROJECT_ROOT/nodes/visualization/plotting/plot_eeg_offline.py" &
-    fi
-    # Unset all known Snap and VSCode variables
-    unset LD_LIBRARY_PATH
-    unset LOCPATH
-    unset GTK_PATH
-    unset GTK_EXE_PREFIX
-    unset GIO_MODULE_DIR
-    unset XDG_DATA_HOME
-    unset XDG_DATA_DIRS
-    unset GSETTINGS_SCHEMA_DIR
-    unset GTK_IM_MODULE_FILE
-    unset SNAP
-    unset SNAP_NAME
-    unset SNAP_REVISION
-    unset SNAP_ARCH
-    unset SNAP_LIBRARY_PATH
-    unset SNAP_VERSION
-    unset SNAP_DATA
-    unset SNAP_COMMON
-    unset SNAP_USER_COMMON
-    unset SNAP_USER_DATA
-    unset SNAP_INSTANCE_NAME
-    unset SNAP_INSTANCE_KEY
-    unset SNAP_COOKIE
-    unset SNAP_REAL_HOME
-    export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-    
-    set +u
-    source /opt/ros/$ROS_DISTRO/setup.bash
-    source "$WORKSPACE/install/setup.bash"
-    set -u
-    export LD_LIBRARY_PATH="/opt/ros/$ROS_DISTRO/lib:$LD_LIBRARY_PATH"
-    rqt
     exit 0
 fi
 
@@ -303,6 +253,10 @@ if [ "$PRODUCTION" -eq 1 ]; then
     MANAGE_DOCKER=1
     VISUALIZATION_MODE=none
 fi
+
+echo "Configuration:"
+echo "  USE_ACQUISITION=$USE_ACQUISITION USE_INFLUXDB=$USE_INFLUXDB USE_ROSBAG=$USE_ROSBAG"
+echo "  RUN_NODE=$RUN_NODE RUN_TESTS=$RUN_TESTS PRODUCTION=$PRODUCTION"
 
 # Start Docker Compose services if enabled
 if [ "$USE_INFLUXDB" -eq 1 ] && [ "$MANAGE_DOCKER" -eq 1 ]; then
@@ -561,19 +515,6 @@ else
     echo "Visualization disabled (use web dashboard at http://localhost:8080)."
 fi
 
-# RQT removed - not working
-# Optionally launch rqt EEG visualization plugin in container
-RUN_RQT="${RUN_RQT:-0}"
-if [ "$RUN_RQT" -eq 1 ]; then
-    echo "⚠️  RQT visualization is disabled - use web dashboard instead"
-    # docker build -t ros2-rqt "$WORKSPACE" || { echo "Docker build failed"; exit 1; }
-    xhost +local:root
-    docker run -it --rm \
-        -v /tmp/.X11-unix:/tmp/.X11-unix \
-        -v "$WORKSPACE":/home/devuser/ros2_ws \
-        ros2-rqt bash -c "source /opt/ros/humble/setup.bash && cd /home/devuser/ros2_ws && colcon build && source install/setup.bash && rqt"
-    xhost -local:root
-fi
 
 echo ""
 echo "============================================"
@@ -685,7 +626,5 @@ else
     echo "To enable auto-start, use: RUN_NODE=1 ./start.sh"
     echo ""
     echo "To use simulator (no device needed):"
-    echo "  SIMULATE=1 RUN_NODE=1 ./start.sh"
+    echo "  USE_ACQUISITION=0 RUN_NODE=1 ./start.sh"
 fi
-#chmod +x /home/tjalf/ros2_ws/src/-healthcare_msgs-demonstration/start.sh && /home/tjalf/ros2_ws/src/-healthcare_msgs-demonstration/start.sh run
-#source /home/tjalf/ros2_ws/src/-healthcare_demo/start.sh
