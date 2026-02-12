@@ -21,14 +21,14 @@ Topics Subscribed
     Raw EEG data from acquisition devices
 /eeg/raw_info : healthcare_msgs.msg.EEGInfo
     Raw metadata (latched, QoS: transient_local)
-
+ signals
 Topics Published
 ----------------
 /eeg/processed : healthcare_msgs.msg.EEG
     Filtered and referenced EEG data
 /eeg/processed_info : healthcare_msgs.msg.EEGInfo
     Metadata with preprocessing annotations (latched)
-
+    t
 Parameters
 ----------
 l_freq : float, default=0.5
@@ -186,6 +186,7 @@ class EEGPreprocessor(Node):
         self.raw_info = None  # Store raw EEGInfo metadata
         self.filter_sos = None
         self.filter_state = None
+        self.streaming_error_count = 0
         
         # Create QoS profile with transient local durability for EEGInfo (latching)
         info_qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
@@ -365,12 +366,19 @@ class EEGPreprocessor(Node):
 
         self.filter_sos = butter(4, [low, high], btype='band', output='sos')
         base_zi = sosfilt_zi(self.filter_sos)
-        self.filter_state = np.repeat(base_zi[:, None, :], num_channels, axis=1)
+        self.filter_state = np.zeros((self.filter_sos.shape[0], num_channels, 2), dtype=np.float64)
+        self.filter_state[:] = base_zi[:, None, :]
 
     def _process_message(self, eeg_array: np.ndarray, original_msg: EEG) -> None:
         """Process and publish a single EEG message in streaming mode."""
         try:
             if self.filter_sos is None or self.filter_state is None:
+                self._init_streaming_filter(eeg_array.shape[0])
+            elif self.filter_state.shape != (self.filter_sos.shape[0], eeg_array.shape[0], 2):
+                self.get_logger().warning(
+                    "Streaming filter state shape mismatch. Reinitializing. "
+                    f"state={self.filter_state.shape}, data={eeg_array.shape}"
+                )
                 self._init_streaming_filter(eeg_array.shape[0])
 
             # Apply common average reference first
@@ -418,7 +426,13 @@ class EEGPreprocessor(Node):
 
             self.pub.publish(out)
         except Exception as e:
-            self.get_logger().error(f"Error processing EEG message (streaming): {e}")
+            self.streaming_error_count += 1
+            stamp = original_msg.header.stamp
+            self.get_logger().error(
+                "Error processing EEG message (streaming). "
+                f"count={self.streaming_error_count} stamp={stamp.sec}.{stamp.nanosec:09d} "
+                f"shape={eeg_array.shape} sample_size={original_msg.sample_size} error={e}"
+            )
             import traceback
             self.get_logger().error(traceback.format_exc())
     

@@ -108,6 +108,7 @@ class EEGInfluxDBBridge(Node):
         # Message counters
         self.raw_count = 0
         self.processed_count = 0
+        self.zero_timestamp_warned = set()
         
         # QoS profile for latched EEGInfo topics
         info_qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
@@ -242,6 +243,13 @@ class EEGInfluxDBBridge(Node):
         try:
             # Extract timestamp from ROS message
             timestamp_ns = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec
+
+            if timestamp_ns == 0 and measurement not in self.zero_timestamp_warned:
+                self.zero_timestamp_warned.add(measurement)
+                self.get_logger().warning(
+                    f"Zero timestamp detected for {measurement}. "
+                    "Check preprocessing timestamps or simulation clock."
+                )
             
             # Calculate number of channels from sample_size and data length
             if not msg.eeg or msg.sample_size == 0:
