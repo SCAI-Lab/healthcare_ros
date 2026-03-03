@@ -64,7 +64,8 @@ EEGInfo Fields Saved
 
 File Management
 ---------------
-- Files are truncated on node startup (prevents appending to old data)
+- Daily file rotation is enabled by default (one JSONL file per day)
+- Files are appended during the day (no startup truncation)
 - Parent directories created automatically
 - Metadata published once via latched topic, saved separately
 - Atomic writes ensure data consistency
@@ -107,6 +108,8 @@ from rclpy.qos import QoSProfile, DurabilityPolicy
 from healthcare_msgs.msg import EEG, EEGInfo
 from pathlib import Path
 import os
+from datetime import datetime
+import re
 
 
 
@@ -124,6 +127,10 @@ class EEGSaver(Node):
         Topic to subscribe to (default: '/neurosity/eeg')
     file_path : str, optional
         Output JSONL file path (default: 'eeg_data/eeg_raw_data.jsonl')
+    rotate_daily : bool, optional
+        Rotate output files daily using suffix _YYYY-MM-DD (default: true)
+    retention_days : int, optional
+        Delete this saver's rotated files older than this many days (default: 4)
     
     File Organization
     -----------------
@@ -154,10 +161,14 @@ class EEGSaver(Node):
         # Declare parameters for topic and file path (allowing CLI override)
         self.declare_parameter('topic', '/neurosity/eeg')
         self.declare_parameter('file_path', default_raw_path)
+        self.declare_parameter('rotate_daily', True)
+        self.declare_parameter('retention_days', 4)
 
         # Get parameters after node is fully initialized to ensure CLI overrides are respected
         topic = self.get_parameter('topic').get_parameter_value().string_value
         file_path = self.get_parameter('file_path').get_parameter_value().string_value
+        self.rotate_daily = self.get_parameter('rotate_daily').get_parameter_value().bool_value
+        self.retention_days = self.get_parameter('retention_days').get_parameter_value().integer_value
 
         # Optionally: update node name for logging clarity (not strictly needed for ROS2, but helps debug)
         if '/raw' in topic:
@@ -167,16 +178,13 @@ class EEGSaver(Node):
         else:
             self._node_name = 'eeg_saver'
 
-        self.data_file = Path(file_path)
-        self.data_file.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Clear/create the data file on startup (overwrite mode)
-        with open(self.data_file, 'w') as f:
-            pass  # Creates empty file or truncates existing file
-        
-        # Create metadata file path (same name with _info.json suffix)
-        self.info_file = self.data_file.with_suffix('').with_suffix('.info.json')
+        self.base_data_file = Path(file_path)
+        self.base_data_file.parent.mkdir(parents=True, exist_ok=True)
+        self.current_day = None
+        self.data_file = None
+        self.info_file = None
         self.info_stored = False
+        self._refresh_output_paths(force=True)
 
         self.get_logger().info(f'EEG Saver initialized. Subscribing to: {topic}. Data will be saved to: {self.data_file}')
 
@@ -218,11 +226,85 @@ class EEGSaver(Node):
         )
 
         self.message_count = 0
+
+    def _build_dated_path(self, base_file: Path, day_str: str) -> Path:
+        """Build file path with date suffix before extension."""
+        return base_file.with_name(f'{base_file.stem}_{day_str}{base_file.suffix}')
+
+    def _cleanup_old_rotated_files(self):
+        """Delete rotated JSONL/info files older than retention_days."""
+        if not self.rotate_daily or self.retention_days <= 0:
+            return
+
+        today = datetime.now().date()
+        parent_dir = self.base_data_file.parent
+        base_stem = self.base_data_file.stem
+        base_suffix = self.base_data_file.suffix
+        data_pattern = re.compile(
+            rf'^{re.escape(base_stem)}_(\d{{4}}-\d{{2}}-\d{{2}}){re.escape(base_suffix)}$'
+        )
+        info_pattern = re.compile(
+            rf'^{re.escape(base_stem)}_(\d{{4}}-\d{{2}}-\d{{2}})\.info\.json$'
+        )
+
+        deleted_count = 0
+        for candidate in parent_dir.iterdir():
+            if not candidate.is_file():
+                continue
+
+            match = data_pattern.match(candidate.name) or info_pattern.match(candidate.name)
+            if not match:
+                continue
+
+            try:
+                file_day = datetime.strptime(match.group(1), '%Y-%m-%d').date()
+            except ValueError:
+                continue
+
+            age_days = (today - file_day).days
+            if age_days > self.retention_days:
+                try:
+                    candidate.unlink()
+                    deleted_count += 1
+                except OSError as exc:
+                    self.get_logger().warn(f'Failed to delete old file {candidate}: {exc}')
+
+        if deleted_count > 0:
+            self.get_logger().info(
+                f'Retention cleanup removed {deleted_count} file(s) older than {self.retention_days} day(s)'
+            )
+
+    def _refresh_output_paths(self, force: bool = False):
+        """Rotate output paths when day changes (if enabled)."""
+        day_str = datetime.now().strftime('%Y-%m-%d')
+        if not force and self.rotate_daily and self.current_day == day_str:
+            return
+
+        previous_data_file = self.data_file
+        self.current_day = day_str if self.rotate_daily else 'static'
+
+        if self.rotate_daily:
+            self.data_file = self._build_dated_path(self.base_data_file, day_str)
+        else:
+            self.data_file = self.base_data_file
+
+        self.data_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.data_file, 'a'):
+            pass
+
+        self.info_file = self.data_file.with_suffix('').with_suffix('.info.json')
+        self._cleanup_old_rotated_files()
+
+        if previous_data_file != self.data_file:
+            self.info_stored = False
+            self.get_logger().info(f'Using output file: {self.data_file}')
         
     def eeg_callback(self, msg: EEG):
         """Called whenever a new EEG message is received.
         Serializes the complete EEG message in healthcare_msgs format."""
         try:
+            self._refresh_output_paths()
+
             # Convert message to dictionary - preserving full healthcare_msgs structure
             # Convert and reduce precision to save space
             # Aggressive rounding to reduce on-disk size (helps memory-efficiency test)
@@ -260,6 +342,8 @@ class EEGSaver(Node):
     def info_callback(self, msg: EEGInfo):
         """Called when EEGInfo metadata is received.
         Stores it once to a JSON file and republishes it."""
+        self._refresh_output_paths()
+
         if self.info_stored:
             return  # Only store once
         

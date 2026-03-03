@@ -26,6 +26,7 @@ services:
     image: nginx:alpine
     container_name: healthcare-nginx
     ports:
+      - "8080:80"
       - "443:443"
     volumes:
       - ./nodes/visualization/dashboard/influxdb_realtime_dashboard.html:/usr/share/nginx/html/index.html:ro

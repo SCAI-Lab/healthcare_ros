@@ -15,9 +15,10 @@ This will:
 - Build workspace packages if needed
 - Start the complete 4-node EEG pipeline:
   1. **EEG Simulator**, **Neurosity Driver**, or **OpenBCI Driver** (depending on USE_ACQUISITION or device)
-  2. **Raw EEG Saver** - saves to `eeg_data/eeg_raw_data.jsonl`
+  2. **Raw EEG Saver** - saves to daily files like `eeg_data/eeg_raw_data_YYYY-MM-DD.jsonl`
   3. **EEG Preprocessor** - applies bandpass filter (0.5-45 Hz) and CAR
-  4. **Preprocessed EEG Saver** - saves to `eeg_data/eeg_preprocessed_data.jsonl`
+  4. **Preprocessed EEG Saver** - saves to daily files like `eeg_data/eeg_preprocessed_data_YYYY-MM-DD.jsonl`
+- Daily JSONL retention is enabled: files older than 4 days are automatically deleted.
 
 ## Environment Variables
 
@@ -139,8 +140,9 @@ cat logs/eeg_json_saver_preprocessed.pid
 ### View data files
 ```bash
 # From project root
-head -3 eeg_data/eeg_raw_data.jsonl | python3 -m json.tool
-head -3 eeg_data/eeg_preprocessed_data.jsonl | python3 -m json.tool
+TODAY=$(date +%F)
+head -3 "eeg_data/eeg_raw_data_${TODAY}.jsonl" | python3 -m json.tool
+head -3 "eeg_data/eeg_preprocessed_data_${TODAY}.jsonl" | python3 -m json.tool
 
 # File sizes
 ls -lh eeg_data/
@@ -196,8 +198,8 @@ python3 nodes/visualization/plotting/plot_eeg_comparison.py
 USE_INFLUXDB=1 ./launch/start.sh
 ```
 Dashboard URLs:
-- http://localhost/
-- https://localhost/
+- http://localhost:8080/ (recommended)
+- https://localhost/ (optional TLS endpoint)
 
 ## Troubleshooting
 
