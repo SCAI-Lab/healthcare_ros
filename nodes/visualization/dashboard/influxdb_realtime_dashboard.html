@@ -53,6 +53,10 @@
     <div class="page-title">🧠 Raw (thin) vs Preprocessed (bold)</div>
     <div class="status">
         <div class="status-badge"><span class="status-label">Simulator</span><span id="sim-rate" class="status-value">-- Hz</span></div>
+        <div class="status-badge"><span class="status-label">Latency</span><span id="latency-value" class="status-value">-- ms</span></div>
+        <div class="status-badge" id="latency-warning" style="display: none; background: rgba(244, 63, 94, 0.15); color: #f8d7da;">
+            <span class="status-label">Warning</span><span class="status-value">latency unavailable</span>
+        </div>
     </div>
 
     <div class="container">
@@ -398,8 +402,32 @@ ${aggregate}  |> keep(columns: ["_time", "_value", "channel"])
             requestAnimationFrame(renderCharts);
         }
 
+        const latencyValueEl = document.getElementById('latency-value');
+        const latencyWarningEl = document.getElementById('latency-warning');
+
+        async function fetchLatency() {
+            try {
+                const response = await fetch(`${INFLUXDB_URL}/api/latency/mean`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const payload = await response.json();
+                if (payload && payload.mean_ms != null) {
+                    latencyValueEl.textContent = `${payload.mean_ms.toFixed(1)} ms`;
+                    latencyWarningEl.style.display = 'none';
+                } else {
+                    latencyValueEl.textContent = '-- ms';
+                    latencyWarningEl.style.display = 'inline-flex';
+                }
+            } catch (error) {
+                console.error('Latency fetch failed:', error);
+                latencyValueEl.textContent = '-- ms';
+                latencyWarningEl.style.display = 'inline-flex';
+            }
+        }
+
         setInterval(fetchData, DATA_POLL_INTERVAL_MS);
         fetchData();
+        setInterval(fetchLatency, 1000);
+        fetchLatency();
         requestAnimationFrame(renderCharts);
         console.log(`Dashboard started (poll ${DATA_POLL_INTERVAL_MS}ms, render ${TARGET_RENDER_HZ}Hz)`);
     </script>

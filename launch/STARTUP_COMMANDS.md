@@ -99,6 +99,25 @@ USE_ACQUISITION=0 VISUALIZATION_MODE=comparison ./launch/start.sh
 ```bash
 USE_ACQUISITION=0 USE_ROSBAG=1 ./launch/start.sh
 ```
+
+### Enable Real-Time Latency Monitoring with Dashboard
+```bash
+# Production setup with latency monitoring (recommended for performance analysis)
+PRODUCTION=1 ./launch/start.sh
+```
+
+This enables:
+- Real-time EEG visualization (Raw vs Preprocessed)
+- End-to-End Latency Metrics on the dashboard
+- InfluxDB time-series database (5-minute data retention)
+- Web dashboard at http://localhost:8080
+
+Monitor latency metrics directly in the dashboard:
+- Raw>Proc: Time from acquisition to preprocessing (typical: 8-20ms)
+- E2E: Total end-to-end latency (typical: 30-100ms)
+- EMA: Exponential moving average over last 100 samples
+
+For detailed latency analysis, see [LATENCY_MONITORING_EN.md](../docs/LATENCY_MONITORING_EN.md)
 *Records all topics to MCAP format in `nodes/rosbag_data/`. View with `ros2 bag info nodes/rosbag_data/`*
 
 ### Run automated tests (unit + integration)

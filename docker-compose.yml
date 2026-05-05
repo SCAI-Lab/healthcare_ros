@@ -6,15 +6,13 @@ services:
     container_name: influxdb
     ports:
       - "8086:8086"
-    env_file:
-      - ./env_credentials/.env.influxdb
     environment:
       - DOCKER_INFLUXDB_INIT_MODE=setup
-      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_ADMIN_USERNAME}
-      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_ADMIN_PASSWORD}
-      - DOCKER_INFLUXDB_INIT_ORG=${INFLUXDB_ORG}
-      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUXDB_BUCKET}
-      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_ADMIN_TOKEN}
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=H3@lthC@re!2026
+      - DOCKER_INFLUXDB_INIT_ORG=healthcare
+      - DOCKER_INFLUXDB_INIT_BUCKET=eeg_data
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=hc-eeg-secure-t0ken!2026@api
     volumes:
       - influxdb-data:/var/lib/influxdb2
       - influxdb-config:/etc/influxdb2
@@ -34,6 +32,38 @@ services:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - influxdb
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  latency-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.latency
+    container_name: latency-api
+    environment:
+      - INFLUXDB_URL=http://influxdb:8086
+      - INFLUXDB_TOKEN=hc-eeg-secure-t0ken!2026@api
+      - INFLUXDB_ORG=healthcare
+      - INFLUXDB_BUCKET=eeg_data
+    depends_on:
+      - influxdb
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  data-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.data
+    container_name: data-api
+    environment:
+      - INFLUXDB_URL=http://influxdb:8086
+      - INFLUXDB_TOKEN=hc-eeg-secure-t0ken!2026@api
+      - INFLUXDB_ORG=healthcare
+      - INFLUXDB_BUCKET=eeg_data
     depends_on:
       - influxdb
     restart: unless-stopped

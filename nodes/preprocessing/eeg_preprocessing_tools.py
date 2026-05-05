@@ -81,7 +81,7 @@ class EEGPreprocessingTools:
     baseline correction, epoch creation, and reference channel setting.
     """
 
-    def __init__(self, logger=None, log_dir="logs", log_file="preprocessing.log"):
+    def __init__(self, logger=None, log_dir="log", log_file="preprocessing.log"):
         """
         Initializes the EEGPreprocessing class with logging configuration.
 
@@ -263,12 +263,26 @@ class EEGPreprocessingTools:
             tuple: (eeg_array, sample_size) where eeg_array is shaped (channels, samples)
         """
         eeg_array = np.array(eeg_flat, dtype=np.float64)
+        if sample_size <= 0:
+            self.logger.error(f"Invalid sample_size {sample_size} received when reshaping EEG data")
+            raise ValueError(f"Invalid sample_size: {sample_size}")
+        
         num_channels = len(eeg_array) // sample_size
+        
+        if len(eeg_array) == 0:
+            self.logger.error("Empty EEG data received for reshaping")
+            raise ValueError("Empty EEG data")
         
         if len(eeg_array) % sample_size != 0:
             self.logger.warning(f"EEG data length {len(eeg_array)} not evenly divisible by sample_size {sample_size}")
             # Trim to make it evenly divisible
             eeg_array = eeg_array[:num_channels * sample_size]
+        
+        if num_channels == 0:
+            self.logger.error(
+                f"Unable to reshape EEG data: length={len(eeg_array)} sample_size={sample_size} num_channels={num_channels}"
+            )
+            raise ValueError("Invalid EEG reshape dimensions")
         
         eeg_array = eeg_array.reshape(num_channels, sample_size)
         self.logger.debug(f"Reshaped EEG data to {eeg_array.shape}")

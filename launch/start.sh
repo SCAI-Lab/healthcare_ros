@@ -152,8 +152,12 @@ if [ "$BUILD_NEEDED" -eq 1 ]; then
     echo "Building workspace with all dependencies..."
     # Build all packages in the workspace
     if command -v colcon >/dev/null 2>&1; then
+        # Remove stale package build/install artifacts that can break symlink install
+        rm -rf "$WORKSPACE/install/eeg_latency_monitor" "$WORKSPACE/build/eeg_latency_monitor" || true
+
         colcon build --symlink-install || {
             echo "First attempt failed; trying full rebuild..."
+            rm -rf "$WORKSPACE/install/eeg_latency_monitor" "$WORKSPACE/build/eeg_latency_monitor" || true
             colcon build --symlink-install || { echo "colcon build failed twice. Aborting."; exit 1; }
         }
     else
@@ -241,7 +245,7 @@ USE_ACQUISITION="${USE_ACQUISITION:-0}"  # 0=simulator, 1=OpenBCI, 2=Neurosity
 OPENBCI_PORT="${OPENBCI_PORT:-/dev/ttyUSB0}"  # OpenBCI serial port
 OPENBCI_CHANNELS="${OPENBCI_CHANNELS:-8}"  # OpenBCI channel count (8 or 16)
 USE_ROSBAG="${USE_ROSBAG:-0}"  # 1=use rosbag (MCAP), 0=use JSON files
-USE_INFLUXDB="${USE_INFLUXDB:-0}"  # 1=enable InfluxDB bridge for web visualization
+USE_INFLUXDB="${USE_INFLUXDB:-1}"  # 1=enable InfluxDB bridge for web visualization
 MANAGE_DOCKER="${MANAGE_DOCKER:-1}"  # 1=automatically start/stop Docker services, 0=manual
 ENCRYPTED_ENV="${ENCRYPTED_ENV:-0}"  # 1=use encrypted credentials, 0=use plain credentials
 
@@ -339,6 +343,10 @@ if [ "$USE_INFLUXDB" -eq 1 ] && [ "$MANAGE_DOCKER" -eq 1 ]; then
             echo "Please check generate_dashboard.py and your credentials file."
             exit 1
         }
+
+        # Stop any stale compose containers first so names can be reused cleanly
+        echo "Stopping any existing Docker Compose services..."
+        "${COMPOSE_CMD[@]}" down --remove-orphans >/dev/null 2>&1 || true
         
         "${COMPOSE_CMD[@]}" up -d
         echo "Waiting for services to be ready..."
@@ -500,6 +508,28 @@ if [ "$RUN_NODE" -eq 1 ]; then
         else
             echo "InfluxDB bridge script not found at $INFLUXDB_BRIDGE_SCRIPT; skipping"
         fi
+        
+        # Start EEG Latency Monitor node (optional, but should run with InfluxDB for visualization)
+        echo "Starting EEG latency monitor for end-to-end delay measurement..."
+        LATENCY_MONITOR_LOG_FILE="$LOG_DIR/eeg_latency_monitor.log"
+        LATENCY_MONITOR_SCRIPT="$PROJECT_ROOT/nodes/monitoring/monitoring/eeg_latency_monitor.py"
+        
+        # Export credentials for the monitor node to connect to InfluxDB
+        export INFLUXDB_URL="${INFLUXDB_URL:-http://localhost:8086}"
+        export INFLUXDB_TOKEN="${INFLUXDB_ADMIN_TOKEN}"
+        export INFLUXDB_ORG="${INFLUXDB_ORG}"
+        export INFLUXDB_BUCKET="${INFLUXDB_BUCKET}"
+        
+        if [ -f "$LATENCY_MONITOR_SCRIPT" ]; then
+            nohup "$VENV_PATH/bin/python3" "$LATENCY_MONITOR_SCRIPT" >> "$LATENCY_MONITOR_LOG_FILE" 2>&1 &
+            LATENCY_MONITOR_PID=$!
+            echo "eeg_latency_monitor started with PID $LATENCY_MONITOR_PID. Logs: $LATENCY_MONITOR_LOG_FILE"
+            echo "$LATENCY_MONITOR_PID" > "$LOG_DIR/eeg_latency_monitor.pid"
+            echo "⏱️ Latency metrics will be displayed on the dashboard (raw→processed, total E2E)"
+            echo ""
+        else
+            echo "⚠️  Latency monitor script not found at $LATENCY_MONITOR_SCRIPT; skipping"
+        fi
     fi
 fi
 
@@ -560,6 +590,7 @@ if [ "$RUN_NODE" -eq 1 ]; then
         echo "  - eeg_preprocessor (PID: $(cat $LOG_DIR/eeg_preprocessor.pid 2>/dev/null || echo '?'))"
         if [ "$USE_INFLUXDB" -eq 1 ]; then
             echo "  - eeg_influxdb_bridge (PID: $(cat $LOG_DIR/eeg_influxdb_bridge.pid 2>/dev/null || echo '?'))"
+            echo "  - eeg_latency_monitor (PID: $(cat $LOG_DIR/eeg_latency_monitor.pid 2>/dev/null || echo '?'))"
         fi
         echo ""
         echo "EEG data files (JSONL format):"
@@ -574,7 +605,7 @@ if [ "$RUN_NODE" -eq 1 ]; then
             echo "  - Password: ${INFLUXDB_ADMIN_PASSWORD:-""}"
             echo "  - Org: ${INFLUXDB_ORG:-healthcare}"
             echo "  - Bucket: ${INFLUXDB_BUCKET:-eeg_data}"
-            echo "  - Measurements: eeg_raw, eeg_preprocessed"
+            echo "  - Measurements: eeg_raw, eeg_preprocessed, eeg_latency_*"
             echo ""
             echo "Docker Services (managed by docker-compose):"
             echo "  - Start: cd $PROJECT_ROOT && docker-compose up -d"
@@ -592,6 +623,7 @@ if [ "$RUN_NODE" -eq 1 ]; then
         echo "  - Prep Saver: tail -f $LOG_DIR/eeg_json_saver_preprocessed.log"
         if [ "$USE_INFLUXDB" -eq 1 ]; then
             echo "  - InfluxDB:   tail -f $LOG_DIR/eeg_influxdb_bridge.log"
+            echo "  - Latency:    tail -f $LOG_DIR/eeg_latency_monitor.log"
         fi
     fi
     echo ""
@@ -601,18 +633,27 @@ if [ "$RUN_NODE" -eq 1 ]; then
             echo "  kill \\$(cat $LOG_DIR/eeg_simulator.pid) \\$(cat $LOG_DIR/eeg_rosbag_saver.pid) \\$(cat $LOG_DIR/eeg_preprocessor.pid)"
         else
             echo "  kill \\$(cat $LOG_DIR/eeg_simulator.pid) \\$(cat $LOG_DIR/eeg_json_saver_raw.pid) \\$(cat $LOG_DIR/eeg_preprocessor.pid) \\$(cat $LOG_DIR/eeg_json_saver_preprocessed.pid)"
+            if [ "$USE_INFLUXDB" -eq 1 ]; then
+                echo " \\$(cat $LOG_DIR/eeg_influxdb_bridge.pid) \\$(cat $LOG_DIR/eeg_latency_monitor.pid)"
+            fi
         fi
     elif [ "$USE_ACQUISITION" -eq 1 ]; then
         if [ "${USE_ROSBAG:-0}" = "1" ]; then
             echo "  kill \\$(cat $LOG_DIR/openbci_driver.pid) \\$(cat $LOG_DIR/eeg_rosbag_saver.pid) \\$(cat $LOG_DIR/eeg_preprocessor.pid)"
         else
             echo "  kill \\$(cat $LOG_DIR/openbci_driver.pid) \\$(cat $LOG_DIR/eeg_json_saver_raw.pid) \\$(cat $LOG_DIR/eeg_preprocessor.pid) \\$(cat $LOG_DIR/eeg_json_saver_preprocessed.pid)"
+            if [ "$USE_INFLUXDB" -eq 1 ]; then
+                echo " \\$(cat $LOG_DIR/eeg_influxdb_bridge.pid) \\$(cat $LOG_DIR/eeg_latency_monitor.pid)"
+            fi
         fi
     elif [ "$USE_ACQUISITION" -eq 2 ]; then
         if [ "${USE_ROSBAG:-0}" = "1" ]; then
             echo "  kill \\$(cat $LOG_DIR/neurosity_driver.pid) \\$(cat $LOG_DIR/eeg_rosbag_saver.pid) \\$(cat $LOG_DIR/eeg_preprocessor.pid)"
         else
             echo "  kill \\$(cat $LOG_DIR/neurosity_driver.pid) \\$(cat $LOG_DIR/eeg_json_saver_raw.pid) \\$(cat $LOG_DIR/eeg_preprocessor.pid) \\$(cat $LOG_DIR/eeg_json_saver_preprocessed.pid)"
+            if [ "$USE_INFLUXDB" -eq 1 ]; then
+                echo " \\$(cat $LOG_DIR/eeg_influxdb_bridge.pid) \\$(cat $LOG_DIR/eeg_latency_monitor.pid)"
+            fi
         fi
     fi
 else
