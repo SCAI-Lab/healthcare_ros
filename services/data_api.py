@@ -7,7 +7,6 @@ Central gateway for all telemetry:
 - latency metrics (mean, windowed)
 - derived analytics
 
-Frontend MUST NOT query InfluxDB directly.
 """
 
 from fastapi import FastAPI
@@ -17,9 +16,9 @@ import time
 app = FastAPI()
 
 # ---------------- CONFIG ----------------
-INFLUX_URL = "http://localhost:8086"
-INFLUX_TOKEN = "YOUR_TOKEN"
-INFLUX_ORG = "healthcare"
+INFLUX_URL = "http://127.0.0.1:8086"
+INFLUX_TOKEN = "hc-eeg-secure-t0ken!2026@api"
+INFLUX_ORG = "7af19ab14561ec38"
 INFLUX_BUCKET = "eeg_data"
 
 client = InfluxDBClient(
@@ -35,25 +34,36 @@ query_api = client.query_api()
 # ---------------- LATENCY ----------------
 @app.get("/latency/mean")
 def latency_mean():
-    query = f'''
+
+    try:
+        query = f'''
 from(bucket: "{INFLUX_BUCKET}")
   |> range(start: -10s)
-  |> filter(fn: (r) => r["_measurement"] == "eeg_latency_raw_to_processed")
-  |> filter(fn: (r) => r["_field"] == "value")
-  |> mean()
 '''
 
-    tables = query_api.query(query)
+        tables = query_api.query(query)
 
-    values = []
-    for t in tables:
-        for r in t.records:
-            values.append(r.get_value())
+        rows = []
 
-    if not values:
-        return {"mean_ms": None}
+        for t in tables:
+            for r in t.records:
+                rows.append({
+                    "measurement": r.get_measurement(),
+                    "field": r.get_field(),
+                    "value": r.get_value(),
+                    "time": str(r.get_time())
+                })
 
-    return {"mean_ms": sum(values) / len(values)}
+        return {
+            "count": len(rows),
+            "sample": rows[:20]
+        }
+
+    except Exception as e:
+        return {
+            "error": str(e),
+            "type": str(type(e))
+        }
 # ----------------------------------------
 
 
@@ -118,3 +128,10 @@ def system_status():
         }
     }
 # ----------------------------------------
+
+@app.get("/debug/influx")
+def debug_influx():
+    try:
+        return client.query_api().query('from(bucket:"eeg_data") |> range(start: -10s) |> limit(n:1)')
+    except Exception as e:
+        return {"error": str(e)}

@@ -91,7 +91,7 @@ class EEGPreprocessor(Node):
         # Initialize preprocessing tools
         self.tools = EEGPreprocessingTools()
 
-        self.get_logger().info("EEGPreprocessor initialized (streaming mode, no buffer)")
+        self.get_logger().info("EEGPreprocessor initialized (streaming moder)")
 
     # ------------------------------------------------------------------
     # Metadata Handling
@@ -161,9 +161,6 @@ class EEGPreprocessor(Node):
             5. Optional rounding
             6. Publish processed message
 
-        IMPORTANT:
-            - No buffering
-            - Timestamp is preserved exactly
         """
         try:
             # Reshape EEG data
