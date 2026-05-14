@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EEG demonstration</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; overflow: hidden; }
+        .page-title {
+            text-align: center;
+            font-size: 20px;
+            font-weight: 700;
+            padding: 14px 16px 6px;
+            letter-spacing: 0.5px;
+            color: #e2e8f0;
+        }
+        .status {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            align-items: center;
+            font-size: 12px;
+            color: #94a3b8;
+            padding-bottom: 6px;
+        }
+        .status-badge {
+            display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px;
+            background: rgba(255,255,255,0.08); border-radius: 20px;
+        }
+        .status-label { color: #94a3b8; }
+        .status-value { color: #e2e8f0; font-weight: 600; }
+        .pulse { width: 8px; height: 8px; background: #48bb78; border-radius: 50%; animation: pulse 1s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        .container {
+            display: grid; grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(2, 1fr);
+            gap: 15px; padding: 10px 15px 15px; height: calc(100vh - 66px);
+        }
+        .channel-card {
+            background: #1e293b; border-radius: 12px; padding: 15px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3); display: flex; flex-direction: column;
+        }
+        .channel-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 10px; padding-bottom: 10px; border-bottom: 2px solid #334155;
+        }
+        .channel-name { font-size: 18px; font-weight: bold; color: #667eea; }
+        .chart-container { flex: 1; position: relative; min-height: 0; }
+    </style>
+</head>
+<body>
+    <div class="page-title">🧠 Raw (thin) vs Preprocessed (bold)</div>
+    <div class="status">
+        <div class="status-badge"><span class="status-label">Simulator</span><span id="sim-rate" class="status-value">-- Hz</span></div>
+        <div class="status-badge"><span class="status-label">Latency short</span><span id="latency-short-value" class="status-value">-- ms</span></div>
+        <div class="status-badge"><span class="status-label">Latency long</span><span id="latency-long-value" class="status-value">-- ms</span></div>
+        <div class="status-badge"><span class="status-label">Stddev</span><span id="latency-std-value" class="status-value">-- ms</span></div>
+    </div>
+    <div class="status">
+        <div class="status-badge" style="flex: 1; justify-content: center; max-width: 55%;">
+            <span class="status-label">Measured</span><span id="latency-window" class="status-value">--</span>
+        </div>
+        <div class="status-badge" style="flex: 1; justify-content: center; max-width: 40%;">
+            <span class="status-label">Heartbeat</span><span id="latency-heartbeat" class="status-value">--</span>
+        </div>
+    </div>
+    <div class="status">
+        <div id="latency-warning" class="status-badge" style="display: none; background: rgba(244, 63, 94, 0.15); color: #f8d7da;">
+            <span class="status-label">Warning</span><span class="status-value">latency unavailable</span>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="channel-card">
+            <div class="channel-header">
+                <span class="channel-name">FP1</span>
+            </div>
+            <div class="chart-container"><canvas id="chart-FP1"></canvas></div>
+        </div>
+
+        <div class="channel-card">
+            <div class="channel-header">
+                <span class="channel-name">FP2</span>
+            </div>
+            <div class="chart-container"><canvas id="chart-FP2"></canvas></div>
+        </div>
+
+        <div class="channel-card">
+            <div class="channel-header">
+                <span class="channel-name">F3</span>
+            </div>
+            <div class="chart-container"><canvas id="chart-F3"></canvas></div>
+        </div>
+
+        <div class="channel-card">
+            <div class="channel-header">
+                <span class="channel-name">F4</span>
+            </div>
+            <div class="chart-container"><canvas id="chart-F4"></canvas></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.protocol + '//' + window.location.host + '/api';
+        const SIMULATOR_RATE_HZ = 150;
+        const DATA_POLL_INTERVAL_MS = 200;
+        const TARGET_RENDER_HZ = 60;
+        const MIN_RENDER_INTERVAL_MS = 1000 / TARGET_RENDER_HZ;
+        const TIME_WINDOW_SECONDS = 2;
+        const WINDOW_DELAY_SECONDS = 0;
+        const MAX_GAP_MS = 200;
+        const MAX_DATA_POINTS = Math.ceil(SIMULATOR_RATE_HZ * TIME_WINDOW_SECONDS) + 100;
+
+        const CHANNELS = ['FP1', 'FP2', 'F3', 'F4'];
+        const CHANNEL_MAP = { 'FP1': ['FP1', 'CH1'], 'FP2': ['FP2', 'CH2'], 'F3': ['F3', 'CH3'], 'F4': ['F4', 'CH4'] };
+        let charts = {};
+        let inFlight = false;
+        let needsRender = false;
+        let lastRenderTime = 0;
+        let lastDataTimeMs = 0;
+        let lastWindowNowMs = 0;
+
+        const simRateEl = document.getElementById('sim-rate');
+        const latencyShortEl = document.getElementById('latency-short-value');
+        const latencyLongEl = document.getElementById('latency-long-value');
+        const latencyStdEl = document.getElementById('latency-std-value');
+        const latencyWindowEl = document.getElementById('latency-window');
+        const latencyHeartbeatEl = document.getElementById('latency-heartbeat');
+        const latencyWarningEl = document.getElementById('latency-warning');
+
+        if (simRateEl) simRateEl.textContent = `${SIMULATOR_RATE_HZ} Hz`;
+
+        CHANNELS.forEach(channel => {
+            const ctx = document.getElementById(`chart-${channel}`).getContext('2d');
+            charts[channel] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [
+                        {
+                            label: channel + ' (Raw)',
+                            data: [],
+                            borderColor: getChannelColor(channel, 0.35),
+                            backgroundColor: getChannelColor(channel, 0.03),
+                            borderWidth: 1,
+                            borderDash: [6, 4],
+                            tension: 0.1,
+                            pointRadius: 0,
+                            fill: false
+                        },
+                        {
+                            label: channel + ' (Preprocessed)',
+                            data: [],
+                            borderColor: getChannelColor(channel, 1.0),
+                            backgroundColor: getChannelColor(channel, 0.08),
+                            borderWidth: 3,
+                            tension: 0.1,
+                            pointRadius: 0,
+                            fill: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: false,
+                    plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                    scales: {
+                        x: {
+                            display: true,
+                            type: 'linear',
+                            title: {
+                                display: true,
+                                text: 'Zeit (s)',
+                                color: '#94a3b8',
+                                font: { size: 11, weight: 'bold' }
+                            },
+                            ticks: { 
+                                color: '#94a3b8', 
+                                font: { size: 9 },
+                                maxTicksLimit: 8,
+                                callback: function(value) {
+                                    const windowStart = this.min ?? value;
+                                    return ((value - windowStart) / 1000).toFixed(1);
+                                }
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Amplitude (uV)',
+                                color: '#94a3b8',
+                                font: { size: 11, weight: 'bold' }
+                            },
+                            grid: { color: 'rgba(148, 163, 184, 0.1)' },
+                            ticks: { color: '#94a3b8', font: { size: 10 } },
+                            suggestedMin: -100,
+                            suggestedMax: 100
+                        }
+                    }
+                }
+            });
+        });
+
+        function getChannelColor(channel, alpha = 1) {
+            const colors = {
+                'FP1': `rgba(99, 102, 241, ${alpha})`,
+                'FP2': `rgba(236, 72, 153, ${alpha})`,
+                'F3': `rgba(34, 197, 94, ${alpha})`,
+                'F4': `rgba(251, 146, 60, ${alpha})`
+            };
+            return colors[channel] || `rgba(148, 163, 184, ${alpha})`;
+        }
+
+        async function fetchMeasurement(path, datasetIndex) {
+            const response = await fetch(`${API_BASE}/${path}?window=${TIME_WINDOW_SECONDS}`);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const payload = await response.json();
+            const maxTime = parseAndUpdateCharts(payload.data, datasetIndex);
+            if (maxTime > 0) {
+                lastDataTimeMs = Math.max(lastDataTimeMs, maxTime);
+            }
+        }
+
+        async function fetchData() {
+            if (inFlight) return;
+            inFlight = true;
+
+            try {
+                await Promise.all([
+                    fetchMeasurement('eeg/raw', 0),
+                    fetchMeasurement('eeg/processed', 1)
+                ]);
+            } catch (error) {
+                if (error && error.name === 'AbortError') return;
+                console.error('Error:', error);
+            } finally {
+                inFlight = false;
+            }
+        }
+
+        function parseAndUpdateCharts(payload, datasetIndex = 0) {
+            if (!payload || !Array.isArray(payload)) return 0;
+
+            const channelData = {};
+            let maxTime = 0;
+
+            payload.forEach(point => {
+                if (!point || !point.time || !point.channel) return;
+
+                const alias = String(point.channel).toUpperCase();
+                let mappedChannel = null;
+                for (const [electrode, aliases] of Object.entries(CHANNEL_MAP)) {
+                    if (aliases.includes(alias) || electrode === alias) {
+                        mappedChannel = electrode;
+                        break;
+                    }
+                }
+                if (!mappedChannel) return;
+
+                const timeMs = new Date(point.time).getTime();
+                const value = Number(point.value) || 0;
+                if (timeMs > maxTime) maxTime = timeMs;
+
+                if (!channelData[mappedChannel]) channelData[mappedChannel] = new Map();
+                channelData[mappedChannel].set(timeMs, value);
+            });
+
+            let anyNewData = false;
+
+            CHANNELS.forEach(channel => {
+                const pointMap = channelData[channel];
+                if (!pointMap || pointMap.size === 0) return;
+
+                const chart = charts[channel];
+                const dataset = chart.data.datasets[datasetIndex];
+                const sortedPoints = Array.from(pointMap.entries())
+                    .sort((a, b) => a[0] - b[0])
+                    .map(([time, value]) => ({ time, value }));
+
+                const withGaps = [];
+                let lastTime = null;
+                sortedPoints.forEach(point => {
+                    if (lastTime !== null && point.time - lastTime > MAX_GAP_MS) {
+                        withGaps.push({ x: point.time, y: null });
+                    }
+                    withGaps.push({ x: point.time, y: point.value });
+                    lastTime = point.time;
+                });
+
+                dataset.data = withGaps;
+                anyNewData = true;
+            });
+
+            if (anyNewData) needsRender = true;
+            return maxTime;
+        }
+
+        function renderCharts(now) {
+            if (now - lastRenderTime >= MIN_RENDER_INTERVAL_MS && needsRender) {
+                let latestRaw = 0;
+                let latestProcessed = 0;
+
+                CHANNELS.forEach(channel => {
+                    const chart = charts[channel];
+                    const rawDataset = chart.data.datasets[0];
+                    const processedDataset = chart.data.datasets[1];
+
+                    if (rawDataset.data.length > 0) {
+                        const lastPoint = rawDataset.data[rawDataset.data.length - 1];
+                        if (lastPoint.x > latestRaw) latestRaw = lastPoint.x;
+                    }
+
+                    if (processedDataset.data.length > 0) {
+                        const lastPoint = processedDataset.data[processedDataset.data.length - 1];
+                        if (lastPoint.x > latestProcessed) latestProcessed = lastPoint.x;
+                    }
+                });
+
+                let nowMs = Math.max(latestRaw || 0, latestProcessed || 0, lastDataTimeMs || 0);
+                if (nowMs === 0) nowMs = Date.now();
+                nowMs -= WINDOW_DELAY_SECONDS * 1000;
+                if (nowMs < lastWindowNowMs) nowMs = lastWindowNowMs;
+                lastWindowNowMs = nowMs;
+                const cutoffTime = nowMs - (TIME_WINDOW_SECONDS * 1000);
+
+                CHANNELS.forEach(channel => {
+                    const chart = charts[channel];
+                    chart.data.datasets.forEach(ds => {
+                        while (ds.data.length > 0 && ds.data[0].x < cutoffTime) {
+                            ds.data.shift();
+                        }
+                        if (ds.data.length > MAX_DATA_POINTS) {
+                            ds.data.splice(0, ds.data.length - MAX_DATA_POINTS);
+                        }
+                    });
+                    chart.options.scales.x.min = cutoffTime;
+                    chart.options.scales.x.max = nowMs;
+                    chart.update('none');
+                });
+
+                needsRender = false;
+                lastRenderTime = now;
+            }
+            requestAnimationFrame(renderCharts);
+        }
+
+        function formatTime(value) {
+            if (!value) return '--';
+            const date = new Date(value);
+            return `${date.toISOString().slice(11, 19)} UTC`;
+        }
+
+        async function fetchLatency() {
+            try {
+                const response = await fetch(`${API_BASE}/latency/mean`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                const contentType = response.headers.get('content-type') || '';
+                if (!contentType.includes('application/json')) {
+                    const text = await response.text();
+                    throw new Error(`Expected JSON but got ${contentType}: ${text.slice(0, 200)}`);
+                }
+
+                const payload = await response.json();
+
+                if (payload) {
+                    latencyShortEl.textContent = payload.short_mean_ms != null ? `${payload.short_mean_ms.toFixed(1)} ms` : '-- ms';
+                    latencyLongEl.textContent = payload.long_mean_ms != null ? `${payload.long_mean_ms.toFixed(1)} ms` : '-- ms';
+                    latencyStdEl.textContent = payload.long_std_ms != null ? `${payload.long_std_ms.toFixed(2)} ms` : '-- ms';
+
+                    latencyWindowEl.textContent = payload.short_period_start && payload.long_period_start
+                        ? `short ${payload.short_window_s}s (${formatTime(payload.short_period_start)} → ${formatTime(payload.short_period_end)}), long ${payload.long_window_s}s (${formatTime(payload.long_period_start)} → ${formatTime(payload.long_period_end)})`
+                        : `short ${payload.short_window_s || '--'}s / long ${payload.long_window_s || '--'}s`;
+
+                    latencyHeartbeatEl.textContent = payload.heartbeat_status === 'alive'
+                        ? `alive (${payload.heartbeat_age_s != null ? `${payload.heartbeat_age_s}s ago` : 'recent'})`
+                        : payload.heartbeat_status === 'stale'
+                            ? `stale (${payload.heartbeat_age_s != null ? `${payload.heartbeat_age_s}s ago` : 'unknown'})`
+                            : 'no data';
+
+                    latencyWarningEl.style.display = 'none';
+                } else {
+                    latencyShortEl.textContent = '-- ms';
+                    latencyLongEl.textContent = '-- ms';
+                    latencyStdEl.textContent = '-- ms';
+                    latencyWindowEl.textContent = '--';
+                    latencyHeartbeatEl.textContent = '--';
+                    latencyWarningEl.style.display = 'inline-flex';
+                }
+            } catch (error) {
+                console.error('Latency fetch failed:', error);
+                latencyShortEl.textContent = '-- ms';
+                latencyLongEl.textContent = '-- ms';
+                latencyStdEl.textContent = '-- ms';
+                latencyWindowEl.textContent = '--';
+                latencyHeartbeatEl.textContent = '--';
+                latencyWarningEl.style.display = 'inline-flex';
+            }
+        }
+
+        setInterval(fetchData, DATA_POLL_INTERVAL_MS);
+        fetchData();
+        setInterval(fetchLatency, 1000);
+        fetchLatency();
+        requestAnimationFrame(renderCharts);
+        console.log(`Dashboard started (poll ${DATA_POLL_INTERVAL_MS}ms, render ${TARGET_RENDER_HZ}Hz)`);
+    </script>
+</body>
+</html>

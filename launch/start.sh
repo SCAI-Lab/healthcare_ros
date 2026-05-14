@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 
-
 # Native start script: activates venv, sources ROS2, builds workspace if needed, and launches nodes.
 
 set -euo pipefail
@@ -15,6 +14,7 @@ ROS_DISTRO="${ROS_DISTRO:-jazzy}"
 REBUILD="${REBUILD:-0}"
 NO_BUILD="${NO_BUILD:-0}"
 PRODUCTION="${PRODUCTION:-0}"
+DEBUG_SHELL="${DEBUG_SHELL:-0}"
 
 usage() {
     cat <<EOF
@@ -24,10 +24,10 @@ Commands:
     help        Show this help
 
 Environment variables:
-    VENV_PATH   Path to Python venv (default: $VENV_PATH)
-    WORKSPACE   Path to ROS2 workspace (default: $WORKSPACE)
-    ROS_DISTRO  ROS2 distro (default: $ROS_DISTRO)
-    PRODUCTION  Enable production preset (simulator + online visualization)
+    VENV_PATH   Path to Python venv
+    WORKSPACE   Path to ROS2 workspace
+    ROS_DISTRO  ROS2 distro
+    PRODUCTION  Enable production preset
 
 Example:
     PRODUCTION=1 $0
@@ -41,62 +41,87 @@ fi
 
 echo "--- Starting environment setup ---"
 
-# 1) Activate venv if present
+# --------------------------------------------------
+# Activate / create venv
+# --------------------------------------------------
+
 if [ -d "$VENV_PATH" ]; then
     echo "Activating Python virtual environment: $VENV_PATH"
-    # shellcheck source=/dev/null
     source "$VENV_PATH/bin/activate"
 else
     echo "Venv not found at $VENV_PATH. Creating a new one..."
+
     python3 -m venv "$VENV_PATH"
-    # shellcheck source=/dev/null
+
     source "$VENV_PATH/bin/activate"
+
     echo "Created and activated venv at $VENV_PATH"
 fi
 
-# Ensure pip is recent
-python -m pip install --upgrade pip >/dev/null
+# --------------------------------------------------
+# Force all child processes to use this venv
+# --------------------------------------------------
 
-# 2) Source ROS 2
+export VIRTUAL_ENV="$VENV_PATH"
+export PATH="$VENV_PATH/bin:$PATH"
+export PYTHONPATH="$VENV_PATH/lib/python3.12/site-packages:${PYTHONPATH:-}"
+export ROS_PYTHON_EXECUTABLE="$VENV_PATH/bin/python3"
+
+echo ""
+echo "============================================"
+echo "Python diagnostics"
+echo "============================================"
+echo "which python3: $(which python3)"
+echo "python version: $(python3 --version)"
+echo "VIRTUAL_ENV=${VIRTUAL_ENV:-NOT_SET}"
+echo "ROS_PYTHON_EXECUTABLE=${ROS_PYTHON_EXECUTABLE:-NOT_SET}"
+echo "PYTHONPATH=${PYTHONPATH:-NOT_SET}"
+echo "============================================"
+echo ""
+
+# --------------------------------------------------
+# Source ROS2
+# --------------------------------------------------
+
 ROS2_SETUP="/opt/ros/$ROS_DISTRO/setup.bash"
+
 if [ -f "$ROS2_SETUP" ]; then
-    echo "Sourcing ROS 2 setup: $ROS2_SETUP (ROS_DISTRO=$ROS_DISTRO)"
-    # shellcheck source=/dev/null
-    # Temporarily disable 'nounset' (-u) because some ROS setup scripts
-    # reference variables that may be unset in this shell. Restore afterward.
+    echo "Sourcing ROS 2 setup: $ROS2_SETUP"
+
     set +u
     source "$ROS2_SETUP"
     set -u
 else
     echo "ERROR: ROS 2 setup not found at $ROS2_SETUP"
-    echo "Set a valid ROS_DISTRO or install ROS 2. Aborting."
     exit 1
 fi
 
-# 3) Check for essential python packages used during ROS interface generation
-echo "Ensuring build-time Python packages (empy) and runtime deps are installed in venv..."
-pip_install_if_missing() {
-    pkg="$1"
-    if ! python -c "import $pkg" &>/dev/null; then
-        echo "Installing missing Python package: $pkg"
-        pip install "$2"
-    else
-        echo "Python package '$pkg' already installed"
-    fi
-}
+# --------------------------------------------------
+# Python dependencies
+# --------------------------------------------------
 
-# Install all required packages
-pip_install_if_missing em empy
-pip_install_if_missing numpy numpy
-pip_install_if_missing scipy scipy
-pip_install_if_missing matplotlib matplotlib
-pip_install_if_missing yaml pyyaml
-pip_install_if_missing neurosity neurosity
-pip_install_if_missing dotenv python-dotenv
-pip_install_if_missing mne mne
-pip_install_if_missing influxdb_client influxdb-client
+echo "Ensuring required Python packages are installed..."
 
-# 4) Change to workspace
+pip install --upgrade pip setuptools wheel
+
+pip install \
+    empy \
+    catkin_pkg \
+    lark \
+    numpy \
+    scipy \
+    matplotlib \
+    pyyaml \
+    python-dotenv \
+    mne \
+    influxdb-client \
+    pyserial \
+    neurosity
+
+# --------------------------------------------------
+# Change to workspace
+# --------------------------------------------------
+
 if [ -d "$WORKSPACE" ]; then
     cd "$WORKSPACE"
     echo "Changed to workspace: $WORKSPACE"
@@ -105,37 +130,34 @@ else
     exit 1
 fi
 
-# 5) Install system dependencies via rosdep (idempotent)
+# --------------------------------------------------
+# rosdep
+# --------------------------------------------------
+
 if command -v rosdep >/dev/null 2>&1; then
-    echo "Running rosdep to install system dependencies..."
-    
-    # Initialize rosdep if not already done
-    if [ ! -d "/etc/ros/rosdep" ]; then
-        echo "Initializing rosdep..."
-        sudo rosdep init 2>/dev/null || true
-    fi
-    
-    # Update rosdep database (suppress verbose output)
-    rosdep update >/dev/null 2>&1 || true
-    
-    # Install dependencies (suppress errors from missing build artifacts)
-    rosdep install --from-paths src --ignore-src -r -y >/dev/null 2>&1 || true
-    echo "System dependencies checked"
+
+    echo "Running rosdep..."
+
+    sudo rosdep init 2>/dev/null || true
+
+    rosdep update || true
+
+    rosdep install \
+        --from-paths src \
+        --ignore-src \
+        -r \
+        -y || true
+
 else
-    echo "WARNING: rosdep not found. Installing..."
-    sudo apt update >/dev/null 2>&1
-    sudo apt install -y python3-rosdep >/dev/null 2>&1
-    if command -v rosdep >/dev/null 2>&1; then
-        sudo rosdep init 2>/dev/null || true
-        rosdep update >/dev/null 2>&1 || true
-        echo "rosdep installed and initialized successfully"
-    else
-        echo "Failed to install rosdep. Please install manually: sudo apt install python3-rosdep"
-    fi
+    echo "WARNING: rosdep not installed"
 fi
 
-# 6) Decide whether to build
+# --------------------------------------------------
+# Build decision
+# --------------------------------------------------
+
 BUILD_NEEDED=0
+
 if [ "$NO_BUILD" = "1" ]; then
     BUILD_NEEDED=0
 elif [ "$REBUILD" = "1" ]; then
@@ -148,524 +170,155 @@ else
     fi
 fi
 
-if [ "$BUILD_NEEDED" -eq 1 ]; then
-    echo "Building workspace with all dependencies..."
-    # Build all packages in the workspace
-    if command -v colcon >/dev/null 2>&1; then
-        # Remove stale package build/install artifacts that can break symlink install
-        rm -rf "$WORKSPACE/install/eeg_latency_monitor" "$WORKSPACE/build/eeg_latency_monitor" || true
+# --------------------------------------------------
+# Build workspace
+# --------------------------------------------------
 
-        colcon build --symlink-install || {
-            echo "First attempt failed; trying full rebuild..."
-            rm -rf "$WORKSPACE/install/eeg_latency_monitor" "$WORKSPACE/build/eeg_latency_monitor" || true
-            colcon build --symlink-install || { echo "colcon build failed twice. Aborting."; exit 1; }
-        }
-    else
-        echo "colcon not found. Install colcon and try again. Aborting."
+if [ "$BUILD_NEEDED" -eq 1 ]; then
+
+    echo "Building workspace..."
+
+    unset COLCON_PYTHON_INSTALLER
+
+    rm -rf build install log
+
+    # IMPORTANT:
+    # DO NOT USE --symlink-install
+    # It triggers editable installs in your environment
+
+    colcon build || {
+
+        echo ""
+        echo "============================================"
+        echo "BUILD FAILED"
+        echo "============================================"
         exit 1
-    fi
-else
-    echo "Build not required. Skipping colcon.";
+    }
 fi
 
-# 7) Source overlay if present
+# --------------------------------------------------
+# Source overlay
+# --------------------------------------------------
+
 if [ -f "$WORKSPACE/install/setup.bash" ]; then
-    # shellcheck source=/dev/null
+
     set +u
     source "$WORKSPACE/install/setup.bash"
     set -u
-    echo "Sourced workspace overlay: $WORKSPACE/install/setup.bash"
+
+    echo "Workspace overlay sourced"
 fi
 
-echo "--- Setup complete. Environment ready. ---"
+echo ""
+echo "============================================"
+echo "Setup complete"
+echo "============================================"
+echo ""
 
-# Run tests if requested (RUN_TESTS=1)
-RUN_TESTS="${RUN_TESTS:-0}"
-if [ "$RUN_TESTS" -eq 1 ]; then
-    echo ""
-    echo "============================================"
-    echo "Running automated tests..."
-    echo "============================================"
-    
-    TEST_DIR="$PROJECT_ROOT/tests"
-    
-    # Run unit tests
-    if [ -f "$TEST_DIR/test_eeg_unit.py" ]; then
-        echo ""
-        echo "--- Running Unit Tests ---"
-        cd "$PROJECT_ROOT" || exit 1
-        "$VENV_PATH/bin/python3" tests/test_eeg_unit.py
-        UNIT_TEST_RESULT=$?
-    fi
-    
-    # Run integration tests (requires simulator to be running)
-    if [ -f "$TEST_DIR/test_eeg_integration.py" ]; then
-        echo ""
-        echo "--- Running Integration Tests ---"
-        echo "Starting simulator for integration tests..."
-        
-        # Start simulator temporarily
-        LOG_DIR="$PROJECT_ROOT/logs"
-        mkdir -p "$LOG_DIR"
-        SIM_SCRIPT="$PROJECT_ROOT/nodes/eeg_simulator.py"
-        nohup "$VENV_PATH/bin/python3" "$SIM_SCRIPT" >> "$LOG_DIR/test_simulator.log" 2>&1 &
-        TEST_SIM_PID=$!
-        
-        # Wait for simulator to initialize
-        sleep 3
-        
-        # Run integration tests
-        cd "$PROJECT_ROOT" || exit 1
-        "$VENV_PATH/bin/python3" tests/test_eeg_integration.py 10
-        INTEGRATION_TEST_RESULT=$?
-        
-        # Stop test simulator
-        kill $TEST_SIM_PID 2>/dev/null || true
-        pkill -f "eeg_simulator|eeg_json_saver" 2>/dev/null || true
-    fi
-    
-    echo ""
-    echo "============================================"
-    echo "Test Results Summary:"
-    echo "============================================"
-    [ "$UNIT_TEST_RESULT" -eq 0 ] && echo "✅ Unit Tests: PASSED" || echo "❌ Unit Tests: FAILED"
-    [ "$INTEGRATION_TEST_RESULT" -eq 0 ] && echo "✅ Integration Tests: PASSED" || echo "❌ Integration Tests: FAILED"
-    echo "============================================"
-    echo ""
-    
-    # Exit if RUN_NODE is not set (tests only mode)
-    if [ "${RUN_NODE:-0}" -eq 0 ]; then
-        exit 0
-    fi
+# --------------------------------------------------
+# Optional debug shell
+# --------------------------------------------------
+
+if [ "$DEBUG_SHELL" -eq 1 ]; then
+
+    echo "Opening debug shell..."
+
+    bash --noprofile --norc
 fi
 
-# Start the node in background by default (can be disabled with RUN_NODE=0)
+# --------------------------------------------------
+# Runtime config
+# --------------------------------------------------
+
 RUN_NODE="${RUN_NODE:-1}"
-USE_ACQUISITION="${USE_ACQUISITION:-0}"  # 0=simulator, 1=OpenBCI, 2=Neurosity
-OPENBCI_PORT="${OPENBCI_PORT:-/dev/ttyUSB0}"  # OpenBCI serial port
-OPENBCI_CHANNELS="${OPENBCI_CHANNELS:-8}"  # OpenBCI channel count (8 or 16)
-USE_ROSBAG="${USE_ROSBAG:-0}"  # 1=use rosbag (MCAP), 0=use JSON files
-USE_INFLUXDB="${USE_INFLUXDB:-1}"  # 1=enable InfluxDB bridge for web visualization
-MANAGE_DOCKER="${MANAGE_DOCKER:-1}"  # 1=automatically start/stop Docker services, 0=manual
-ENCRYPTED_ENV="${ENCRYPTED_ENV:-0}"  # 1=use encrypted credentials, 0=use plain credentials
+USE_ACQUISITION="${USE_ACQUISITION:-0}"
 
-# Production preset: simulator + online visualization
-if [ "$PRODUCTION" -eq 1 ]; then
-    RUN_NODE=1
-    USE_ACQUISITION=0
-    USE_INFLUXDB=1
-    MANAGE_DOCKER=1
-    VISUALIZATION_MODE=none
+LOG_DIR="$PROJECT_ROOT/logs"
+
+mkdir -p "$LOG_DIR"
+
+# --------------------------------------------------
+# Simulator mode
+# --------------------------------------------------
+
+if [ "$RUN_NODE" -eq 1 ] && [ "$USE_ACQUISITION" -eq 0 ]; then
+
+    echo "Starting EEG simulator..."
+
+    SIM_SCRIPT="$PROJECT_ROOT/nodes/data_acquisition/eeg_simulator.py"
+
+    nohup "$VENV_PATH/bin/python3" \
+        "$SIM_SCRIPT" \
+        >> "$LOG_DIR/eeg_simulator.log" 2>&1 &
+
+    SIM_PID=$!
+
+    echo "$SIM_PID" > "$LOG_DIR/eeg_simulator.pid"
+
+    echo "Simulator PID: $SIM_PID"
 fi
 
-echo "Configuration:"
-echo "  USE_ACQUISITION=$USE_ACQUISITION USE_INFLUXDB=$USE_INFLUXDB USE_ROSBAG=$USE_ROSBAG"
-echo "  RUN_NODE=$RUN_NODE RUN_TESTS=$RUN_TESTS PRODUCTION=$PRODUCTION"
+# --------------------------------------------------
+# OpenBCI mode
+# --------------------------------------------------
 
-# Start Docker Compose services if enabled
-if [ "$USE_INFLUXDB" -eq 1 ] && [ "$MANAGE_DOCKER" -eq 1 ]; then
-    echo "Starting Docker Compose services (InfluxDB + Nginx)..."
-    COMPOSE_CMD=()
-    if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
-        COMPOSE_CMD=(docker compose)
-    elif command -v docker-compose >/dev/null 2>&1; then
-        COMPOSE_CMD=(docker-compose)
-    fi
+if [ "$RUN_NODE" -eq 1 ] && [ "$USE_ACQUISITION" -eq 1 ]; then
 
-    if [ ${#COMPOSE_CMD[@]} -ne 0 ]; then
-        cd "$PROJECT_ROOT" || exit 1
-        
-        CREDENTIALS_DIR="$PROJECT_ROOT/env_credentials"
-        INFLUX_ENV_FILE="$CREDENTIALS_DIR/.env.influxdb"
-        INFLUX_ENCRYPTED_FILE="$CREDENTIALS_DIR/.env.influxdb.encrypted"
-        
-        # Handle encrypted or plain credentials
-        if [ "$ENCRYPTED_ENV" -eq 1 ]; then
-            echo "🔐 Using encrypted credentials..."
-            if [ -f "$INFLUX_ENCRYPTED_FILE" ]; then
-                echo "Decrypting env_credentials/.env.influxdb.encrypted..."
-                if ! "$VENV_PATH/bin/python3" "$PROJECT_ROOT/scripts/encrypt_credentials_multi.py" --decrypt; then
-                    echo "❌ Decryption failed!"
-                    exit 1
-                fi
-                # Clean up decrypted files on exit
-                trap 'rm -f "$CREDENTIALS_DIR"/*.env "$CREDENTIALS_DIR"/.env.* 2>/dev/null' EXIT
-            else
-                echo "❌ ERROR: No encrypted credentials found."
-                echo "Expected:"
-                echo "  - $INFLUX_ENCRYPTED_FILE"
-                echo ""
-                echo "Create encrypted credentials first:"
-                echo "  python3 scripts/encrypt_credentials_multi.py --setup"
-                echo ""
-                exit 1
-            fi
-        fi
-        
-        # Load credentials from env_credentials/.env.influxdb only
-        if [ -f "$INFLUX_ENV_FILE" ]; then
-            echo "Loading credentials from env_credentials/.env.influxdb..."
-            set -a  # Export all variables
-            source "$INFLUX_ENV_FILE"
-            set +a
-        else
-            echo "❌ ERROR: No InfluxDB credentials found!"
-            echo ""
-            echo "Create env_credentials/.env.influxdb first:"
-            echo "  # Create and edit with your secure credentials"
-            echo "  nano env_credentials/.env.influxdb"
-            echo ""
-            echo "Or use encrypted credentials:"
-            echo "  python3 scripts/encrypt_credentials_multi.py --setup"
-            echo "  ENCRYPTED_ENV=1 bash launch/start.sh"
-            echo ""
-            echo "See env_credentials/README.md for details."
-            exit 1
-        fi
-        
-        # Validate required environment variables
-        if [ -z "$INFLUXDB_ADMIN_USERNAME" ] || [ -z "$INFLUXDB_ADMIN_PASSWORD" ] || [ -z "$INFLUXDB_ADMIN_TOKEN" ]; then
-            echo "❌ ERROR: Missing required credentials in InfluxDB env file!"
-            echo ""
-            echo "Required variables:"
-            echo "  - INFLUXDB_ADMIN_USERNAME"
-            echo "  - INFLUXDB_ADMIN_PASSWORD"
-            echo "  - INFLUXDB_ADMIN_TOKEN"
-            echo ""
-            echo "Please check env_credentials/.env.influxdb and try again."
-            exit 1
-        fi
-        
-        # Generate dashboard with credentials
-        echo "Generating dashboard with credentials..."
-        python3 "$PROJECT_ROOT/nodes/visualization/dashboard/generate_dashboard.py" || {
-            echo "❌ ERROR: Failed to generate dashboard."
-            echo "Please check generate_dashboard.py and your credentials file."
-            exit 1
-        }
+    echo "Starting OpenBCI driver..."
 
-        # Stop any stale compose containers first so names can be reused cleanly
-        echo "Stopping any existing Docker Compose services..."
-        "${COMPOSE_CMD[@]}" down --remove-orphans >/dev/null 2>&1 || true
-        
-        "${COMPOSE_CMD[@]}" up -d
-        echo "Waiting for services to be ready..."
-        sleep 3
-        
-        # Check if services are running
-        if "${COMPOSE_CMD[@]}" ps | grep -q "Up"; then
-            echo "✅ Docker services started successfully"
-            echo "   - InfluxDB: http://localhost:8086"
-            echo "   - Dashboard: http://localhost:8080"
-        else
-            echo "❌ Docker services failed to start. Check: ${COMPOSE_CMD[*]} logs"
-        fi
-        cd "$WORKSPACE" || exit 1
-    else
-        echo "⚠️  Docker Compose not found. Install Docker Compose v2 or docker-compose."
-        echo "    Or disable automatic Docker management: MANAGE_DOCKER=0"
-    fi
+    set +u
+    source "/opt/ros/$ROS_DISTRO/setup.bash"
+    source "$WORKSPACE/install/setup.bash"
+    set -u
+
+    nohup ros2 run openbci_driver openbci_driver \
+        >> "$LOG_DIR/openbci_driver.log" 2>&1 &
+
+    NODE_PID=$!
+
+    echo "$NODE_PID" > "$LOG_DIR/openbci_driver.pid"
+
+    echo "OpenBCI PID: $NODE_PID"
 fi
 
-if [ "$RUN_NODE" -eq 1 ]; then
-    LOG_DIR="$PROJECT_ROOT/logs"
-    mkdir -p "$LOG_DIR"
-    
-    if [ "$USE_ACQUISITION" -eq 0 ]; then
-        echo "Starting EEG SIMULATOR (not real device)..."
-        SIM_LOG_FILE="$LOG_DIR/eeg_simulator.log"
-        SIM_SCRIPT="$PROJECT_ROOT/nodes/data_acquisition/eeg_simulator.py"
-        
-        cd "$WORKSPACE" || { echo "ERROR: Could not cd to $WORKSPACE"; exit 1; }
-        
-        nohup "$VENV_PATH/bin/python3" "$SIM_SCRIPT" >> "$SIM_LOG_FILE" 2>&1 &
-        SIM_PID=$!
-        echo "EEG simulator started with PID $SIM_PID. Logs: $SIM_LOG_FILE"
-        echo "$SIM_PID" > "$LOG_DIR/eeg_simulator.pid"
-    elif [ "$USE_ACQUISITION" -eq 1 ]; then
-        # Start OpenBCI driver node
-        echo "Starting OpenBCI driver node (port: $OPENBCI_PORT, channels: $OPENBCI_CHANNELS)..."
-        LOG_FILE="$LOG_DIR/openbci_driver.log"
-        
-        cd "$WORKSPACE" || { echo "ERROR: Could not cd to $WORKSPACE"; exit 1; }
-        
-        # Source ROS2 and workspace to use ros2 run
-        set +u
-        source "/opt/ros/$ROS_DISTRO/setup.bash"
-        source "$WORKSPACE/install/setup.bash"
-        set -u
-        
-        # Start OpenBCI driver with ros2 run
-        nohup ros2 run openbci_driver openbci_driver --ros-args -p port:="$OPENBCI_PORT" -p channel_count:=$OPENBCI_CHANNELS >> "$LOG_FILE" 2>&1 &
-        NODE_PID=$!
-        echo "openbci_driver started with PID $NODE_PID. Logs: $LOG_FILE"
-        echo "$NODE_PID" > "$LOG_DIR/openbci_driver.pid"
-    elif [ "$USE_ACQUISITION" -eq 2 ]; then
-        # Start neurosity_driver node using ros2 run
-        echo "Starting neurosity_driver node in the background..."
-        LOG_FILE="$LOG_DIR/neurosity_driver.log"
-        
-        # Change to package directory so load_dotenv() can find .env file
-        PACKAGE_DIR="$PROJECT_ROOT/nodes/data_acquisition/neurosity_driver"
-        
-        cd "$PACKAGE_DIR" || { echo "ERROR: Could not cd to $PACKAGE_DIR"; exit 1; }
-        
-        # Ensure venv has required dependencies
-        "$VENV_PATH/bin/python3" -m pip install --quiet python-dotenv neurosity 2>/dev/null || true
-        
-        # Use ros2 run to start the driver (ROS2 will use the workspace overlay)
-        nohup ros2 run neurosity_driver neurosity_driver >> "$LOG_FILE" 2>&1 &
-        NODE_PID=$!
-        echo "neurosity_driver started with PID $NODE_PID. Logs: $LOG_FILE"
-        echo "$NODE_PID" > "$LOG_DIR/neurosity_driver.pid"
-    else
-        echo "ERROR: Invalid USE_ACQUISITION value: $USE_ACQUISITION (must be 0, 1, or 2)"
-        exit 1
-    fi
-    
+# --------------------------------------------------
+# Neurosity mode
+# --------------------------------------------------
 
-    # Start saver nodes: either rosbag (MCAP format) or JSON format
-    if [ "${USE_ROSBAG:-0}" = "1" ]; then
-        echo "Starting EEG rosbag saver (MCAP format) for all topics..."
-        ROSBAG_SAVER_SCRIPT="$PROJECT_ROOT/nodes/saver/eeg_rosbag_saver.py"
-        ROSBAG_LOG_FILE="$LOG_DIR/eeg_rosbag_saver.log"
-        
-        # Source ROS2 and workspace for rosbag command
-        set +u
-        source "/opt/ros/$ROS_DISTRO/setup.bash"
-        source "$WORKSPACE/install/setup.bash"
-        set -u
-        
-        nohup "$VENV_PATH/bin/python3" "$ROSBAG_SAVER_SCRIPT" >> "$ROSBAG_LOG_FILE" 2>&1 &
-        ROSBAG_PID=$!
-        echo "eeg_rosbag_saver started with PID $ROSBAG_PID. Logs: $ROSBAG_LOG_FILE"
-        echo "$ROSBAG_PID" > "$LOG_DIR/eeg_rosbag_saver.pid"
-    else
-        # Start two EEG JSON Saver nodes: one for raw, one for preprocessed
-        echo "Starting EEG JSON saver node for raw data..."
-        RAW_SAVER_LOG_FILE="$LOG_DIR/eeg_json_saver_raw.log"
-        RAW_SAVER_SCRIPT="$PROJECT_ROOT/nodes/saver/eeg_json_saver.py"
-        EEG_DATA_DIR="$PROJECT_ROOT/eeg_data"
-        nohup "$VENV_PATH/bin/python3" "$RAW_SAVER_SCRIPT" --ros-args -p topic:=/eeg/raw -p file_path:="$EEG_DATA_DIR/eeg_raw_data.jsonl" >> "$RAW_SAVER_LOG_FILE" 2>&1 &
-        RAW_SAVER_PID=$!
-        echo "eeg_json_saver (raw) started with PID $RAW_SAVER_PID. Logs: $RAW_SAVER_LOG_FILE"
-        echo "$RAW_SAVER_PID" > "$LOG_DIR/eeg_json_saver_raw.pid"
+if [ "$RUN_NODE" -eq 1 ] && [ "$USE_ACQUISITION" -eq 2 ]; then
 
-        echo "Starting EEG JSON saver node for preprocessed data..."
-        PREPROC_SAVER_LOG_FILE="$LOG_DIR/eeg_json_saver_preprocessed.log"
-        PREPROC_SAVER_SCRIPT="$PROJECT_ROOT/nodes/saver/eeg_json_saver.py"
-        nohup "$VENV_PATH/bin/python3" "$PREPROC_SAVER_SCRIPT" --ros-args -p topic:=/eeg/processed -p file_path:="$EEG_DATA_DIR/eeg_preprocessed_data.jsonl" >> "$PREPROC_SAVER_LOG_FILE" 2>&1 &
-        PREPROC_SAVER_PID=$!
-        echo "eeg_json_saver (preprocessed) started with PID $PREPROC_SAVER_PID. Logs: $PREPROC_SAVER_LOG_FILE"
-        echo "$PREPROC_SAVER_PID" > "$LOG_DIR/eeg_json_saver_preprocessed.pid"
-    fi
-    
-    # Start EEG Preprocessor node (optional)
-    echo "Starting eeg_preprocessor node in the background..."
-    PREPROC_LOG_FILE="$LOG_DIR/eeg_preprocessor.log"
-    PREPROC_SCRIPT="$PROJECT_ROOT/nodes/preprocessing/eeg_preprocessing.py"
-    if [ -f "$PREPROC_SCRIPT" ]; then
-        nohup "$VENV_PATH/bin/python3" "$PREPROC_SCRIPT" >> "$PREPROC_LOG_FILE" 2>&1 &
-        PREPROC_PID=$!
-        echo "eeg_preprocessor started with PID $PREPROC_PID. Logs: $PREPROC_LOG_FILE"
-        echo "$PREPROC_PID" > "$LOG_DIR/eeg_preprocessor.pid"
-    else
-        echo "Preprocessor script not found at $PREPROC_SCRIPT; skipping preprocessor start"
-    fi
-    
-    # Start InfluxDB bridge node (optional)
-    if [ "$USE_INFLUXDB" -eq 1 ]; then
-        echo "Starting InfluxDB bridge for web-based visualization..."
-        INFLUXDB_BRIDGE_LOG_FILE="$LOG_DIR/eeg_influxdb_bridge.log"
-        INFLUXDB_BRIDGE_SCRIPT="$PROJECT_ROOT/nodes/saver/eeg_influxdb_bridge.py"
-        
-        # Ensure credentials are loaded from the environment
-        if [ -z "${INFLUXDB_ADMIN_TOKEN:-}" ]; then
-            echo "❌ ERROR: InfluxDB credentials not loaded!"
-            echo "Credentials should have been loaded earlier in the script."
-            echo "This is a logic error. Please report this issue."
-            exit 1
-        fi
-        
-        # Credentials already loaded earlier, just export what's needed
-        export INFLUXDB_URL="${INFLUXDB_URL:-http://localhost:8086}"
-        export INFLUXDB_TOKEN="${INFLUXDB_ADMIN_TOKEN}"
-        export INFLUXDB_ORG="${INFLUXDB_ORG}"
-        export INFLUXDB_BUCKET="${INFLUXDB_BUCKET}"
-        
-        if [ -f "$INFLUXDB_BRIDGE_SCRIPT" ]; then
-            nohup "$VENV_PATH/bin/python3" "$INFLUXDB_BRIDGE_SCRIPT" >> "$INFLUXDB_BRIDGE_LOG_FILE" 2>&1 &
-            INFLUXDB_PID=$!
-            echo "eeg_influxdb_bridge started with PID $INFLUXDB_PID. Logs: $INFLUXDB_BRIDGE_LOG_FILE"
-            echo "$INFLUXDB_PID" > "$LOG_DIR/eeg_influxdb_bridge.pid"
-            echo ""
-            echo "🌐 Web Visualization URLs:"
-            echo "   - Real-Time Dashboard: http://localhost:8080"
-            echo "   - InfluxDB UI: $INFLUXDB_URL"
-            echo "   - Username: ${INFLUXDB_ADMIN_USERNAME:-admin}"
-            echo "   - Password: ${INFLUXDB_ADMIN_PASSWORD:-""}"
-            echo ""
-        else
-            echo "InfluxDB bridge script not found at $INFLUXDB_BRIDGE_SCRIPT; skipping"
-        fi
-        
-        # Start EEG Latency Monitor node (optional, but should run with InfluxDB for visualization)
-        echo "Starting EEG latency monitor for end-to-end delay measurement..."
-        LATENCY_MONITOR_LOG_FILE="$LOG_DIR/eeg_latency_monitor.log"
-        LATENCY_MONITOR_SCRIPT="$PROJECT_ROOT/nodes/monitoring/monitoring/eeg_latency_monitor.py"
-        
-        # Export credentials for the monitor node to connect to InfluxDB
-        export INFLUXDB_URL="${INFLUXDB_URL:-http://localhost:8086}"
-        export INFLUXDB_TOKEN="${INFLUXDB_ADMIN_TOKEN}"
-        export INFLUXDB_ORG="${INFLUXDB_ORG}"
-        export INFLUXDB_BUCKET="${INFLUXDB_BUCKET}"
-        
-        if [ -f "$LATENCY_MONITOR_SCRIPT" ]; then
-            nohup "$VENV_PATH/bin/python3" "$LATENCY_MONITOR_SCRIPT" >> "$LATENCY_MONITOR_LOG_FILE" 2>&1 &
-            LATENCY_MONITOR_PID=$!
-            echo "eeg_latency_monitor started with PID $LATENCY_MONITOR_PID. Logs: $LATENCY_MONITOR_LOG_FILE"
-            echo "$LATENCY_MONITOR_PID" > "$LOG_DIR/eeg_latency_monitor.pid"
-            echo "⏱️ Latency metrics will be displayed on the dashboard (raw→processed, total E2E)"
-            echo ""
-        else
-            echo "⚠️  Latency monitor script not found at $LATENCY_MONITOR_SCRIPT; skipping"
-        fi
-    fi
+    echo "Starting Neurosity driver..."
+
+    set +u
+    source "/opt/ros/$ROS_DISTRO/setup.bash"
+    source "$WORKSPACE/install/setup.bash"
+    set -u
+
+    nohup ros2 run neurosity_driver neurosity_driver \
+        >> "$LOG_DIR/neurosity_driver.log" 2>&1 &
+
+    NODE_PID=$!
+
+    echo "$NODE_PID" > "$LOG_DIR/neurosity_driver.pid"
+
+    echo "Neurosity PID: $NODE_PID"
 fi
-
-
-
-# Visualization mode: none (default) or comparison
-VISUALIZATION_MODE="${VISUALIZATION_MODE:-none}"
-
-if [ "$VISUALIZATION_MODE" = "comparison" ]; then
-    echo "Starting offline EEG plotting script..."
-    python3 "$PROJECT_ROOT/nodes/visualization/plotting/plot_eeg_offline.py" &
-else
-    echo "Visualization disabled (use web dashboard at http://localhost:8080)."
-fi
-
 
 echo ""
 echo "============================================"
-echo "Startup complete!"
+echo "Startup complete"
 echo "============================================"
 echo ""
 
-if [ "$RUN_NODE" -eq 1 ]; then
-    if [ "$USE_ACQUISITION" -eq 0 ]; then
-        echo "Running in SIMULATOR MODE (test data, no real device needed)"
-        echo ""
-        echo "Nodes started:"
-        echo "  - eeg_simulator (PID: $(cat $LOG_DIR/eeg_simulator.pid 2>/dev/null || echo '?'))"
-    elif [ "$USE_ACQUISITION" -eq 1 ]; then
-        echo "Running with OPENBCI DEVICE"
-        echo ""
-        echo "Nodes started:"
-        echo "  - openbci_driver (PID: $(cat $LOG_DIR/openbci_driver.pid 2>/dev/null || echo '?'))"
-    elif [ "$USE_ACQUISITION" -eq 2 ]; then
-        echo "Running with NEUROSITY DEVICE"
-        echo ""
-        echo "Nodes started:"
-        echo "  - neurosity_driver (PID: $(cat $LOG_DIR/neurosity_driver.pid 2>/dev/null || echo '?'))"
-    fi
-    # Show which saver node is running and its PID/log
-    if [ "${USE_ROSBAG:-0}" = "1" ]; then
-        echo "  - eeg_rosbag_saver (PID: $(cat $LOG_DIR/eeg_rosbag_saver.pid 2>/dev/null || echo '?'))"
-        echo "  - eeg_preprocessor (PID: $(cat $LOG_DIR/eeg_preprocessor.pid 2>/dev/null || echo '?'))"
-        echo ""
-        echo "Rosbag directory (MCAP format):"
-        echo "  $PROJECT_ROOT/eeg_data/rosbag_*/"
-        echo ""
-        echo "View recorded data:"
-        echo "  ros2 bag info \$(ls -dt $PROJECT_ROOT/eeg_data/rosbag_* | head -1)"
-        echo ""
-        echo "Logs:"
-        echo "  - Simulator:  tail -f $LOG_DIR/eeg_simulator.log"
-        echo "  - Rosbag:     tail -f $LOG_DIR/eeg_rosbag_saver.log"
-        echo "  - Preprocessor: tail -f $LOG_DIR/eeg_preprocessor.log"
-    else
-        echo "  - eeg_json_saver (raw) (PID: $(cat $LOG_DIR/eeg_json_saver_raw.pid 2>/dev/null || echo '?'))"
-        echo "  - eeg_json_saver (preprocessed) (PID: $(cat $LOG_DIR/eeg_json_saver_preprocessed.pid 2>/dev/null || echo '?'))"
-        echo "  - eeg_preprocessor (PID: $(cat $LOG_DIR/eeg_preprocessor.pid 2>/dev/null || echo '?'))"
-        if [ "$USE_INFLUXDB" -eq 1 ]; then
-            echo "  - eeg_influxdb_bridge (PID: $(cat $LOG_DIR/eeg_influxdb_bridge.pid 2>/dev/null || echo '?'))"
-            echo "  - eeg_latency_monitor (PID: $(cat $LOG_DIR/eeg_latency_monitor.pid 2>/dev/null || echo '?'))"
-        fi
-        echo ""
-        echo "EEG data files (JSONL format):"
-        echo "  - Raw:        $PROJECT_ROOT/eeg_data/eeg_raw_data.jsonl"
-        echo "  - Preprocessed: $PROJECT_ROOT/eeg_data/eeg_preprocessed_data.jsonl"
-        echo ""
-        if [ "$USE_INFLUXDB" -eq 1 ]; then
-            echo "🌐 Web Visualization:"
-            echo "  - Real-Time Dashboard: http://localhost:8080"
-            echo "  - InfluxDB UI: ${INFLUXDB_URL:-http://localhost:8086}"
-            echo "  - Username: ${INFLUXDB_ADMIN_USERNAME:-admin}"
-            echo "  - Password: ${INFLUXDB_ADMIN_PASSWORD:-""}"
-            echo "  - Org: ${INFLUXDB_ORG:-healthcare}"
-            echo "  - Bucket: ${INFLUXDB_BUCKET:-eeg_data}"
-            echo "  - Measurements: eeg_raw, eeg_preprocessed, eeg_latency_*"
-            echo ""
-            echo "Docker Services (managed by docker-compose):"
-            echo "  - Start: cd $PROJECT_ROOT && docker-compose up -d"
-            echo "  - Stop: cd $PROJECT_ROOT && docker-compose down"
-            echo "  - Logs: docker-compose logs -f nginx influxdb"
-            echo ""
-        fi
-        echo "View stored data:"
-        echo "  head -1 $PROJECT_ROOT/eeg_data/eeg_raw_data.jsonl | python3 -m json.tool"
-        echo ""
-        echo "Logs:"
-        echo "  - Simulator:  tail -f $LOG_DIR/eeg_simulator.log"
-        echo "  - Raw Saver:  tail -f $LOG_DIR/eeg_json_saver_raw.log"
-        echo "  - Preprocessor: tail -f $LOG_DIR/eeg_preprocessor.log"
-        echo "  - Prep Saver: tail -f $LOG_DIR/eeg_json_saver_preprocessed.log"
-        if [ "$USE_INFLUXDB" -eq 1 ]; then
-            echo "  - InfluxDB:   tail -f $LOG_DIR/eeg_influxdb_bridge.log"
-            echo "  - Latency:    tail -f $LOG_DIR/eeg_latency_monitor.log"
-        fi
-    fi
-    echo ""
-    echo "Stop all nodes:"
-    if [ "$USE_ACQUISITION" -eq 0 ]; then
-        if [ "${USE_ROSBAG:-0}" = "1" ]; then
-            echo "  kill \\$(cat $LOG_DIR/eeg_simulator.pid) \\$(cat $LOG_DIR/eeg_rosbag_saver.pid) \\$(cat $LOG_DIR/eeg_preprocessor.pid)"
-        else
-            echo "  kill \\$(cat $LOG_DIR/eeg_simulator.pid) \\$(cat $LOG_DIR/eeg_json_saver_raw.pid) \\$(cat $LOG_DIR/eeg_preprocessor.pid) \\$(cat $LOG_DIR/eeg_json_saver_preprocessed.pid)"
-            if [ "$USE_INFLUXDB" -eq 1 ]; then
-                echo " \\$(cat $LOG_DIR/eeg_influxdb_bridge.pid) \\$(cat $LOG_DIR/eeg_latency_monitor.pid)"
-            fi
-        fi
-    elif [ "$USE_ACQUISITION" -eq 1 ]; then
-        if [ "${USE_ROSBAG:-0}" = "1" ]; then
-            echo "  kill \\$(cat $LOG_DIR/openbci_driver.pid) \\$(cat $LOG_DIR/eeg_rosbag_saver.pid) \\$(cat $LOG_DIR/eeg_preprocessor.pid)"
-        else
-            echo "  kill \\$(cat $LOG_DIR/openbci_driver.pid) \\$(cat $LOG_DIR/eeg_json_saver_raw.pid) \\$(cat $LOG_DIR/eeg_preprocessor.pid) \\$(cat $LOG_DIR/eeg_json_saver_preprocessed.pid)"
-            if [ "$USE_INFLUXDB" -eq 1 ]; then
-                echo " \\$(cat $LOG_DIR/eeg_influxdb_bridge.pid) \\$(cat $LOG_DIR/eeg_latency_monitor.pid)"
-            fi
-        fi
-    elif [ "$USE_ACQUISITION" -eq 2 ]; then
-        if [ "${USE_ROSBAG:-0}" = "1" ]; then
-            echo "  kill \\$(cat $LOG_DIR/neurosity_driver.pid) \\$(cat $LOG_DIR/eeg_rosbag_saver.pid) \\$(cat $LOG_DIR/eeg_preprocessor.pid)"
-        else
-            echo "  kill \\$(cat $LOG_DIR/neurosity_driver.pid) \\$(cat $LOG_DIR/eeg_json_saver_raw.pid) \\$(cat $LOG_DIR/eeg_preprocessor.pid) \\$(cat $LOG_DIR/eeg_json_saver_preprocessed.pid)"
-            if [ "$USE_INFLUXDB" -eq 1 ]; then
-                echo " \\$(cat $LOG_DIR/eeg_influxdb_bridge.pid) \\$(cat $LOG_DIR/eeg_latency_monitor.pid)"
-            fi
-        fi
-    fi
-else
-    LOG_DIR="$PROJECT_ROOT/logs"
-    echo ""
-    echo "============================================"
-    echo "Setup complete! Environment ready."
-    echo "============================================"
-    echo ""
-    echo "Nodes are not running (RUN_NODE=0)."
-    echo "To enable auto-start, use: RUN_NODE=1 ./start.sh"
-    echo ""
-    echo "To use simulator (no device needed):"
-    echo "  USE_ACQUISITION=0 RUN_NODE=1 ./start.sh"
-fi
+echo "ROS topics:"
+echo "  ros2 topic list"
+echo ""
+
+echo "Logs:"
+echo "  tail -f logs/*.log"
+echo ""
+
+echo "Stop everything:"
+echo "  pkill -f ros2"
+echo "  pkill -f eeg"
+echo ""
