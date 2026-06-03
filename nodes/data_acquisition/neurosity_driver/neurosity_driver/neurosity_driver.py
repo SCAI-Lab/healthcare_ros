@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 import os
+from pathlib import Path
 from dotenv import load_dotenv
+
+# Load .env from the package directory first, then fallback to current/home locations.
+dotenv_path = Path(__file__).resolve().parent / ".env"
+load_dotenv(dotenv_path=dotenv_path)
+load_dotenv()
 
 import rclpy
 from rclpy.node import Node
 from healthcare_msgs.msg import EEG, EEGInfo, FilterBase, NotchFilter, DeviceInfo
 
 from neurosity import NeurositySDK
-
-load_dotenv()
 
 REQUIRED_ENV_VARS = ["NEUROSITY_DEVICE_ID", "NEUROSITY_EMAIL", "NEUROSITY_PASSWORD"]
 missing = [var for var in REQUIRED_ENV_VARS if not os.getenv(var)]

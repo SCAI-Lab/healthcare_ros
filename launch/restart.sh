@@ -16,7 +16,7 @@ stop_all_nodes() {
 
     echo "All processes stopped."
 }
-________________________________________
+deactivate
 cd ~/ros2_ws
 rm -rf ~/hcmd-venv
 python3 -m venv ~/hcmd-venv
@@ -24,4 +24,5 @@ rm -rf build install log
 rm -rf ~/ros2_ws/build ~/ros2_ws/install ~/ros2_ws/log
 cd src
 cd healthcare_demo
-DEBUG_SHELL=1 USE_ACQUISITION=2 ./launch/start.sh
+USE_ACQUISITION=2 ./launch/start.sh
+source ~/hcmd-venv/bin/activate

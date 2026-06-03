@@ -1,113 +1,75 @@
 #!/usr/bin/env bash
-
-# Native start script: activates venv, sources ROS2, builds workspace if needed, and launches nodes.
-
 set -euo pipefail
 
-# Get the directory where this script is located
+# Get absolute path to script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+WORKSPACE_ROOT="$(cd "$PROJECT_ROOT/../.." && pwd)"
+
+# Relative paths from workspace
+HEALTHCARE_MSGS_PKG_PATH="$WORKSPACE_ROOT/src/healthcare_msgs"
+HEALTHCARE_MSGS_PKG_ROOT="$(dirname "$HEALTHCARE_MSGS_PKG_PATH")"
 
 VENV_PATH="${VENV_PATH:-$HOME/hcmd-venv}"
-WORKSPACE="${WORKSPACE:-$HOME/ros2_ws}"
-ROS_DISTRO="${ROS_DISTRO:-jazzy}"
-REBUILD="${REBUILD:-0}"
-NO_BUILD="${NO_BUILD:-0}"
-PRODUCTION="${PRODUCTION:-0}"
+RUN_NODE="${RUN_NODE:-1}"
+USE_ACQUISITION="${USE_ACQUISITION:-2}"  # 0=simulator, 1=OpenBCI, 2=Neurosity
 DEBUG_SHELL="${DEBUG_SHELL:-0}"
 
-usage() {
-    cat <<EOF
-Usage: $0 [options] [command]
+LOG_DIR="$PROJECT_ROOT/logs"
+mkdir -p "$LOG_DIR"
 
-Commands:
-    help        Show this help
-
-Environment variables:
-    VENV_PATH   Path to Python venv
-    WORKSPACE   Path to ROS2 workspace
-    ROS_DISTRO  ROS2 distro
-    PRODUCTION  Enable production preset
-
-Example:
-    PRODUCTION=1 $0
-EOF
-}
-
-if [ "${1:-}" = "help" ] || [ "${1:-}" = "--help" ]; then
-    usage
-    exit 0
-fi
-
-echo "--- Starting environment setup ---"
+echo "=========================================="
+echo "  Healthcare EEG Stack (venv-based)"
+echo "=========================================="
+echo "Config:"
+echo "  WORKSPACE_ROOT: $WORKSPACE_ROOT"
+echo "  PROJECT_ROOT: $PROJECT_ROOT"
+echo "  RUN_NODE=$RUN_NODE"
+echo "  USE_ACQUISITION=$USE_ACQUISITION (0=sim, 1=OpenBCI, 2=Neurosity)"
+echo "  VENV=$VENV_PATH"
+echo "=========================================="
 
 # --------------------------------------------------
-# Activate / create venv
+# Setup venv (use current Python)
 # --------------------------------------------------
 
-if [ -d "$VENV_PATH" ]; then
-    echo "Activating Python virtual environment: $VENV_PATH"
-    source "$VENV_PATH/bin/activate"
-else
-    echo "Venv not found at $VENV_PATH. Creating a new one..."
-
+if [ ! -d "$VENV_PATH" ]; then
+    echo "Creating venv..."
     python3 -m venv "$VENV_PATH"
-
-    source "$VENV_PATH/bin/activate"
-
-    echo "Created and activated venv at $VENV_PATH"
 fi
 
-# --------------------------------------------------
-# Force all child processes to use this venv
-# --------------------------------------------------
+source "$VENV_PATH/bin/activate"
 
-export VIRTUAL_ENV="$VENV_PATH"
-export PATH="$VENV_PATH/bin:$PATH"
-export PYTHONPATH="$VENV_PATH/lib/python3.12/site-packages:${PYTHONPATH:-}"
-export ROS_PYTHON_EXECUTABLE="$VENV_PATH/bin/python3"
+PYTHON_BIN="$VENV_PATH/bin/python"
 
-echo ""
-echo "============================================"
-echo "Python diagnostics"
-echo "============================================"
-echo "which python3: $(which python3)"
-echo "python version: $(python3 --version)"
-echo "VIRTUAL_ENV=${VIRTUAL_ENV:-NOT_SET}"
-echo "ROS_PYTHON_EXECUTABLE=${ROS_PYTHON_EXECUTABLE:-NOT_SET}"
-echo "PYTHONPATH=${PYTHONPATH:-NOT_SET}"
-echo "============================================"
-echo ""
-
-# --------------------------------------------------
-# Source ROS2
-# --------------------------------------------------
-
-ROS2_SETUP="/opt/ros/$ROS_DISTRO/setup.bash"
-
-if [ -f "$ROS2_SETUP" ]; then
-    echo "Sourcing ROS 2 setup: $ROS2_SETUP"
-
+ROS_DISTRO="${ROS_DISTRO:-jazzy}"
+if [ -f "/opt/ros/$ROS_DISTRO/setup.bash" ]; then
     set +u
-    source "$ROS2_SETUP"
+    source "/opt/ros/$ROS_DISTRO/setup.bash"
     set -u
+    echo "Sourced ROS $ROS_DISTRO environment"
 else
-    echo "ERROR: ROS 2 setup not found at $ROS2_SETUP"
-    exit 1
+    echo "WARNING: /opt/ros/$ROS_DISTRO/setup.bash not found"
+fi
+if [ -f "$WORKSPACE_ROOT/install/setup.bash" ]; then
+    set +u
+    source "$WORKSPACE_ROOT/install/setup.bash"
+    set -u
+    echo "Sourced workspace install overlay"
 fi
 
+echo "Python: $(which python)"
+echo "Version: $(python --version)"
+
 # --------------------------------------------------
-# Python dependencies
+# Install dependencies in venv
 # --------------------------------------------------
 
-echo "Ensuring required Python packages are installed..."
+echo ""
+echo "Installing/updating dependencies..."
+"$PYTHON_BIN" -m pip install -q --upgrade pip setuptools wheel
 
-pip install --upgrade pip setuptools wheel
-
-pip install \
-    empy \
-    catkin_pkg \
-    lark \
+"$PYTHON_BIN" -m pip install -q \
     numpy \
     scipy \
     matplotlib \
@@ -116,209 +78,90 @@ pip install \
     mne \
     influxdb-client \
     pyserial \
-    neurosity
+    pyOpenBCI \
+    neurosity \
+    rclpy
 
-# --------------------------------------------------
-# Change to workspace
-# --------------------------------------------------
+# Install Python packages required for ROS message generation and colcon builds
+# These are build-time dependencies (empy, lark-parser, catkin-pkg) that the
+# ROS tooling expects to find in the active Python environment when generating
+# and installing message type support.
+"$PYTHON_BIN" -m pip install -q empy lark-parser catkin-pkg
 
-if [ -d "$WORKSPACE" ]; then
-    cd "$WORKSPACE"
-    echo "Changed to workspace: $WORKSPACE"
-else
-    echo "ERROR: Workspace not found at $WORKSPACE"
-    exit 1
-fi
-
-# --------------------------------------------------
-# rosdep
-# --------------------------------------------------
-
-if command -v rosdep >/dev/null 2>&1; then
-
-    echo "Running rosdep..."
-
-    sudo rosdep init 2>/dev/null || true
-
-    rosdep update || true
-
-    rosdep install \
-        --from-paths src \
-        --ignore-src \
-        -r \
-        -y || true
-
-else
-    echo "WARNING: rosdep not installed"
-fi
-
-# --------------------------------------------------
-# Build decision
-# --------------------------------------------------
-
-BUILD_NEEDED=0
-
-if [ "$NO_BUILD" = "1" ]; then
-    BUILD_NEEDED=0
-elif [ "$REBUILD" = "1" ]; then
-    BUILD_NEEDED=1
-elif [ ! -f "$WORKSPACE/install/setup.bash" ]; then
-    BUILD_NEEDED=1
-else
-    if find "$WORKSPACE/src" -type f -newer "$WORKSPACE/install/setup.bash" | grep -q .; then
-        BUILD_NEEDED=1
+# Optionally auto-build the workspace (set AUTO_BUILD=1 to enable)
+if [ "${AUTO_BUILD:-0}" -eq 1 ]; then
+    echo "Auto-building workspace (healthcare_msgs, neurosity_driver)..."
+    set +u
+    if [ -f "/opt/ros/$ROS_DISTRO/setup.bash" ]; then
+        source "/opt/ros/$ROS_DISTRO/setup.bash"
     fi
-fi
-
-# --------------------------------------------------
-# Build workspace
-# --------------------------------------------------
-
-if [ "$BUILD_NEEDED" -eq 1 ]; then
-
-    echo "Building workspace..."
-
-    unset COLCON_PYTHON_INSTALLER
-
-    rm -rf build install log
-
-    # IMPORTANT:
-    # DO NOT USE --symlink-install
-    # It triggers editable installs in your environment
-
-    colcon build || {
-
-        echo ""
-        echo "============================================"
-        echo "BUILD FAILED"
-        echo "============================================"
-        exit 1
-    }
-fi
-
-# --------------------------------------------------
-# Source overlay
-# --------------------------------------------------
-
-if [ -f "$WORKSPACE/install/setup.bash" ]; then
-
-    set +u
-    source "$WORKSPACE/install/setup.bash"
+    if [ -f "$WORKSPACE_ROOT/install/setup.bash" ]; then
+        source "$WORKSPACE_ROOT/install/setup.bash"
+    fi
     set -u
+    (cd "$WORKSPACE_ROOT" && colcon build --packages-select healthcare_msgs neurosity_driver --symlink-install)
+    echo "Build complete"
+fi
 
-    echo "Workspace overlay sourced"
+# healthcare_msgs should be available from the sourced ROS workspace overlay.
+if [ -d "$HEALTHCARE_MSGS_PKG_PATH" ]; then
+    echo "Using workspace healthcare_msgs package at: $HEALTHCARE_MSGS_PKG_PATH"
+fi
+
+echo "Dependencies ready ✓"
+
+# --------------------------------------------------
+# Start Docker Compose (Dashboard + InfluxDB)
+# --------------------------------------------------
+
+echo ""
+echo "Starting Docker Compose (Dashboard, InfluxDB, Data API)..."
+cd "$PROJECT_ROOT"
+docker-compose up -d 2>/dev/null || true
+sleep 2
+
+echo "Dashboard: http://localhost:80"
+echo "InfluxDB API: http://localhost:8086"
+echo ""
+
+# --------------------------------------------------
+# Start EEG Data Source
+# --------------------------------------------------
+
+# Use full path to python from venv for direct execution
+PYTHON_BIN="$VENV_PATH/bin/python"
+
+if [ "$RUN_NODE" -eq 1 ]; then
+    case "$USE_ACQUISITION" in
+        0)
+            echo "Starting EEG Simulator..."
+            nohup "$PYTHON_BIN" "$PROJECT_ROOT/nodes/data_acquisition/eeg_simulator.py" \
+                >> "$LOG_DIR/eeg_simulator.log" 2>&1 &
+            echo $! > "$LOG_DIR/eeg_simulator.pid"
+            echo "Simulator started (PID: $(cat $LOG_DIR/eeg_simulator.pid))"
+            ;;
+        2)
+            echo "Starting Neurosity Driver..."
+            nohup "$PYTHON_BIN" "$PROJECT_ROOT/nodes/data_acquisition/neurosity_driver/neurosity_driver/neurosity_driver.py" \
+                >> "$LOG_DIR/neurosity_driver.log" 2>&1 &
+            echo $! > "$LOG_DIR/neurosity_driver.pid"
+            echo "Neurosity driver started (PID: $(cat $LOG_DIR/neurosity_driver.pid))"
+            ;;
+        *)
+            echo "Unknown USE_ACQUISITION=$USE_ACQUISITION"
+            exit 1
+            ;;
+    esac
 fi
 
 echo ""
-echo "============================================"
-echo "Setup complete"
-echo "============================================"
-echo ""
-
-# --------------------------------------------------
-# Optional debug shell
-# --------------------------------------------------
-
-if [ "$DEBUG_SHELL" -eq 1 ]; then
-
-    echo "Opening debug shell..."
-
-    bash --noprofile --norc
-fi
-
-# --------------------------------------------------
-# Runtime config
-# --------------------------------------------------
-
-RUN_NODE="${RUN_NODE:-1}"
-USE_ACQUISITION="${USE_ACQUISITION:-0}"
-
-LOG_DIR="$PROJECT_ROOT/logs"
-
-mkdir -p "$LOG_DIR"
-
-# --------------------------------------------------
-# Simulator mode
-# --------------------------------------------------
-
-if [ "$RUN_NODE" -eq 1 ] && [ "$USE_ACQUISITION" -eq 0 ]; then
-
-    echo "Starting EEG simulator..."
-
-    SIM_SCRIPT="$PROJECT_ROOT/nodes/data_acquisition/eeg_simulator.py"
-
-    nohup "$VENV_PATH/bin/python3" \
-        "$SIM_SCRIPT" \
-        >> "$LOG_DIR/eeg_simulator.log" 2>&1 &
-
-    SIM_PID=$!
-
-    echo "$SIM_PID" > "$LOG_DIR/eeg_simulator.pid"
-
-    echo "Simulator PID: $SIM_PID"
-fi
-
-# --------------------------------------------------
-# OpenBCI mode
-# --------------------------------------------------
-
-if [ "$RUN_NODE" -eq 1 ] && [ "$USE_ACQUISITION" -eq 1 ]; then
-
-    echo "Starting OpenBCI driver..."
-
-    set +u
-    source "/opt/ros/$ROS_DISTRO/setup.bash"
-    source "$WORKSPACE/install/setup.bash"
-    set -u
-
-    nohup ros2 run openbci_driver openbci_driver \
-        >> "$LOG_DIR/openbci_driver.log" 2>&1 &
-
-    NODE_PID=$!
-
-    echo "$NODE_PID" > "$LOG_DIR/openbci_driver.pid"
-
-    echo "OpenBCI PID: $NODE_PID"
-fi
-
-# --------------------------------------------------
-# Neurosity mode
-# --------------------------------------------------
-
-if [ "$RUN_NODE" -eq 1 ] && [ "$USE_ACQUISITION" -eq 2 ]; then
-
-    echo "Starting Neurosity driver..."
-
-    set +u
-    source "/opt/ros/$ROS_DISTRO/setup.bash"
-    source "$WORKSPACE/install/setup.bash"
-    set -u
-
-    nohup ros2 run neurosity_driver neurosity_driver \
-        >> "$LOG_DIR/neurosity_driver.log" 2>&1 &
-
-    NODE_PID=$!
-
-    echo "$NODE_PID" > "$LOG_DIR/neurosity_driver.pid"
-
-    echo "Neurosity PID: $NODE_PID"
-fi
-
-echo ""
-echo "============================================"
-echo "Startup complete"
-echo "============================================"
-echo ""
-
-echo "ROS topics:"
-echo "  ros2 topic list"
-echo ""
-
+echo "=========================================="
+echo "  System Started"
+echo "=========================================="
 echo "Logs:"
-echo "  tail -f logs/*.log"
+echo "  tail -f $LOG_DIR/*.log"
 echo ""
-
-echo "Stop everything:"
-echo "  pkill -f ros2"
-echo "  pkill -f eeg"
+echo "Dashboard: http://localhost:80"
 echo ""
+echo "Stop all: pkill -f 'eeg_simulator\|neurosity_driver' && docker-compose down"
+echo "=========================================="
