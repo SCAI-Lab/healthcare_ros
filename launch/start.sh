@@ -81,6 +81,7 @@ echo "Installing/updating dependencies..."
     pyOpenBCI \
     neurosity \
     rclpy
+    
 
 # Install Python packages required for ROS message generation and colcon builds
 # These are build-time dependencies (empy, lark-parser, catkin-pkg) that the
@@ -139,6 +140,13 @@ if [ "$RUN_NODE" -eq 1 ]; then
                 >> "$LOG_DIR/eeg_simulator.log" 2>&1 &
             echo $! > "$LOG_DIR/eeg_simulator.pid"
             echo "Simulator started (PID: $(cat $LOG_DIR/eeg_simulator.pid))"
+            ;;
+        1)
+            echo "Starting OpenBCI Driver..."
+            nohup "$PYTHON_BIN" "$PROJECT_ROOT/nodes/data_acquisition/openbci_driver/openbci_driver/openbci_driver.py" \
+                >> "$LOG_DIR/openbci_driver.log" 2>&1 &
+            echo $! > "$LOG_DIR/openbci_driver.pid"
+            echo "OpenBCI driver started (PID: $(cat $LOG_DIR/openbci_driver.pid))"
             ;;
         2)
             echo "Starting Neurosity Driver..."
