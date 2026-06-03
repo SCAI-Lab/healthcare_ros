@@ -2,7 +2,7 @@
 """
 EEG JSON Saver Node - Data Persistence Component
 
-ROS2 node for saving EEG data streams to JSONL (JSON Lines) format.
+ROS2 node for saving EEG data streams to JSONL format.
 Provides human-readable, line-by-line storage of EEG messages following
 the healthcare_msgs standard.
 
@@ -34,12 +34,6 @@ Log files:
     logs/eeg_json_saver_raw.log          # Node logs
     logs/eeg_json_saver_raw.pid          # Process ID
 
-Parameters
-----------
-topic : str, default="/neurosity/eeg"
-    EEG data topic to subscribe to
-file_path : str, default="eeg_data/eeg_raw_data.jsonl"
-    Output JSONL file path
 
 EEG Message Fields Saved
 ------------------------
@@ -70,35 +64,6 @@ File Management
 - Metadata published once via latched topic, saved separately
 - Atomic writes ensure data consistency
 
-Examples
---------
-Save raw data (default):
-    $ ros2 run healthcare_msgs eeg_json_saver
-
-Save preprocessed data:
-    $ ros2 run healthcare_msgs eeg_json_saver --ros-args \
-        -p topic:=/eeg/processed \
-        -p file_path:=eeg_data/eeg_preprocessed_data.jsonl
-
-Run via launch script (starts both raw and preprocessed savers):
-    $ ./launch/start.sh
-
-Read saved data:
-    $ cat eeg_data/eeg_raw_data.jsonl | jq '.eeg | length'
-    $ grep quality eeg_data/eeg_raw_data.jsonl | jq '.quality'
-
-Notes
------
-- JSONL format enables streaming analysis without loading entire file
-- Each line is ~1-10 KB depending on channel count and samples
-- Quality scores are per-channel, not per-sample
-- Timestamps use ROS2 time (can be simulated or system time)
-
-See Also
---------
-eeg_rosbag_saver.py : Alternative MCAP/ROS2 bag format saver
-healthcare_msgs.msg.EEG : EEG message definition
-healthcare_msgs.msg.EEGInfo : EEG metadata definition
 """
 
 import json
@@ -124,7 +89,7 @@ class EEGSaver(Node):
     Parameters (ROS2 CLI)
     ---------------------
     topic : str, optional
-        Topic to subscribe to (default: '/neurosity/eeg')
+        Topic to subscribe to (default: '/eeg/raw')
     file_path : str, optional
         Output JSONL file path (default: 'eeg_data/eeg_raw_data.jsonl')
     rotate_daily : bool, optional
@@ -138,13 +103,6 @@ class EEGSaver(Node):
     - Log files: logs/*.log
     - PID files: logs/*.pid
     
-    Examples
-    --------
-    Save raw data (default):
-    $ ros2 run healthcare_msgs eeg_json_saver
-    
-    Save preprocessed data:
-    $ ros2 run healthcare_msgs eeg_json_saver --ros-args -p topic:=/eeg/processed
     """
     def __init__(self):
         super().__init__('eeg_saver')
@@ -159,7 +117,7 @@ class EEGSaver(Node):
         default_preprocessed_path = os.path.join(DATA_DIR, 'eeg_preprocessed_data.jsonl')
 
         # Declare parameters for topic and file path (allowing CLI override)
-        self.declare_parameter('topic', '/neurosity/eeg')
+        self.declare_parameter('topic', '/eeg/raw')
         self.declare_parameter('file_path', default_raw_path)
         self.declare_parameter('rotate_daily', True)
         self.declare_parameter('retention_days', 4)
@@ -305,8 +263,7 @@ class EEGSaver(Node):
         try:
             self._refresh_output_paths()
 
-            # Convert message to dictionary - preserving full healthcare_msgs structure
-            # Convert and reduce precision to save space
+            # Convert message to dictionary - preserving full healthcare_msgs structureThe amendedThere can be quite favorable.
             # Aggressive rounding to reduce on-disk size (helps memory-efficiency test)
             # Store EEG samples as integer microvolts (rounded) to minimize text size
             eeg_list = [int(round(float(x))) for x in msg.eeg]

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 EEG InfluxDB Bridge Node
 
@@ -152,7 +151,7 @@ class EEGInfluxDBBridge(Node):
             qos_profile=info_qos
         )
         
-        # Subscribe to latency topic for monitoring (optional, does not affect data writing)
+        # Subscribe to latency topic for monitoring )
         self.latency_sub = self.create_subscription(
             Float32,
             '/eeg/latency',
@@ -289,7 +288,7 @@ class EEGInfluxDBBridge(Node):
             if not channel_names or len(channel_names) != num_channels:
                 channel_names = [f'CH{i+1}' for i in range(num_channels)]
             
-            # Write each channel's samples as INDIVIDUAL points for proper visualization
+            # Write each channel's samples as individual points for proper visualization
             # Each sample gets its own timestamp for accurate time-series representation
             points = []
             
@@ -305,7 +304,7 @@ class EEGInfluxDBBridge(Node):
                 end_idx = start_idx + samples_per_channel
                 channel_samples = msg.eeg[start_idx:end_idx]
                 
-                # Write EACH individual sample as a separate time-series point
+                # Write individual sample as a separate time-series point
                 if channel_samples:
                     for sample_idx, sample_value in enumerate(channel_samples):
                         # Calculate timestamp for this specific sample
