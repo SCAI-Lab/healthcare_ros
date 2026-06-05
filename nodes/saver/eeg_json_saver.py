@@ -191,7 +191,7 @@ class EEGSaver(Node):
 
     def _cleanup_old_rotated_files(self):
         """Delete rotated JSONL/info files older than retention_days."""
-        if not self.rotate_daily or self.retention_days <= 0:
+        if not self.rotate_daily or self.retention_days < 0:
             return
 
         today = datetime.now().date()
