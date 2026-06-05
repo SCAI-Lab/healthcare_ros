@@ -190,7 +190,8 @@ class EEGSaver(Node):
         return base_file.with_name(f'{base_file.stem}_{day_str}{base_file.suffix}')
 
     def _cleanup_old_rotated_files(self):
-        """Delete rotated JSONL/info files older than retention_days."""
+        """Delete rotated JSONL/info files older than retention_days.
+           If 0 is selected, JSONL/info filest are deleted immediately (i.e. no retention), if  -1 is selected, they will be kept unlimited."""
         if not self.rotate_daily or self.retention_days < 0:
             return
 
