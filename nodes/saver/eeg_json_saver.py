@@ -195,7 +195,7 @@ class EEGSaver(Node):
         if not self.rotate_daily or self.retention_days < 0:
             return
 
-        today = datetime.now().date()
+        current_day = datetime.now().date()
         parent_dir = self.base_data_file.parent
         base_stem = self.base_data_file.stem
         base_suffix = self.base_data_file.suffix
@@ -218,9 +218,10 @@ class EEGSaver(Node):
             try:
                 file_day = datetime.strptime(match.group(1), '%Y-%m-%d').date()
             except ValueError:
+                self.get_logger().error(f'Error saving EEG message: {e}')
                 continue
 
-            age_days = (today - file_day).days
+            age_days = (current_day - file_day).days
             if age_days > self.retention_days:
                 try:
                     candidate.unlink()
