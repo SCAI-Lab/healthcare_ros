@@ -4,8 +4,11 @@ WORKDIR /app
 
 COPY services/data_api.py /app/data_api.py
 
-RUN pip install fastapi uvicorn influxdb-client python-dotenv
-
+RUN pip install --no-cache-dir \
+    fastapi==0.137.0 \
+    uvicorn==0.49.0 \
+    python-dotenv==1.2.2 \
+    influxdb-client==1.50.0
 EXPOSE 8000
 
 CMD ["uvicorn", "data_api:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -80,8 +80,9 @@ echo "Installing/updating dependencies..."
     pyserial \
     pyOpenBCI \
     neurosity \
-    rclpy
-    
+    rclpy \
+    fastapi \
+    uvicorn
 
 # Install Python packages required for ROS message generation and colcon builds
 # These are build-time dependencies (empy, lark-parser, catkin-pkg) that the

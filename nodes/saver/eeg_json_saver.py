@@ -66,6 +66,7 @@ File Management
 
 """
 
+from asyncio.log import logger
 import json
 import rclpy
 from rclpy.node import Node
@@ -74,7 +75,7 @@ from healthcare_msgs.msg import EEG, EEGInfo
 from pathlib import Path
 import os
 from datetime import datetime
-import re
+from saver import FileRotationManager
 
 
 
@@ -184,55 +185,12 @@ class EEGSaver(Node):
         )
 
         self.message_count = 0
+        self.file_rotation_manager = FileRotationManager(self.get_logger())
 
     def _build_dated_path(self, base_file: Path, day_str: str) -> Path:
         """Build file path with date suffix before extension."""
         return base_file.with_name(f'{base_file.stem}_{day_str}{base_file.suffix}')
 
-    def _cleanup_old_rotated_files(self):
-        """Delete rotated JSONL/info files older than retention_days.
-           If 0 is selected, JSONL/info filest are deleted immediately (i.e. no retention), if  -1 is selected, they will be kept unlimited."""
-        if not self.rotate_daily or self.retention_days < 0:
-            return
-
-        current_day = datetime.now().date()
-        parent_dir = self.base_data_file.parent
-        base_stem = self.base_data_file.stem
-        base_suffix = self.base_data_file.suffix
-        data_pattern = re.compile(
-            rf'^{re.escape(base_stem)}_(\d{{4}}-\d{{2}}-\d{{2}}){re.escape(base_suffix)}$'
-        )
-        info_pattern = re.compile(
-            rf'^{re.escape(base_stem)}_(\d{{4}}-\d{{2}}-\d{{2}})\.info\.json$'
-        )
-
-        deleted_count = 0
-        for candidate in parent_dir.iterdir():
-            if not candidate.is_file():
-                continue
-
-            match = data_pattern.match(candidate.name) or info_pattern.match(candidate.name)
-            if not match:
-                continue
-
-            try:
-                file_day = datetime.strptime(match.group(1), '%Y-%m-%d').date()
-            except ValueError:
-                self.get_logger().error(f'Error saving EEG message: {e}')
-                continue
-
-            age_days = (current_day - file_day).days
-            if age_days > self.retention_days:
-                try:
-                    candidate.unlink()
-                    deleted_count += 1
-                except OSError as exc:
-                    self.get_logger().warn(f'Failed to delete old file {candidate}: {exc}')
-
-        if deleted_count > 0:
-            self.get_logger().info(
-                f'Retention cleanup removed {deleted_count} file(s) older than {self.retention_days} day(s)'
-            )
 
     def _refresh_output_paths(self, force: bool = False):
         """Rotate output paths when day changes (if enabled)."""
@@ -253,7 +211,11 @@ class EEGSaver(Node):
             pass
 
         self.info_file = self.data_file.with_suffix('').with_suffix('.info.json')
-        self._cleanup_old_rotated_files()
+        self.file_rotation_manager.cleanup_rotated_files_JSONL(
+            base_data_file=self.data_file,
+            rotate_daily=self.rotate_daily,
+            retention_days=self.retention_days
+        )
 
         if previous_data_file != self.data_file:
             self.info_stored = False
