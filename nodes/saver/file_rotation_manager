@@ -1,0 +1,11 @@
+class FileRotationManager:
+    def __init__(self, logger):
+        self.logger = logger
+
+    def cleanup_rotated_files_JSONL(
+        self,
+        base_data_file,
+        rotate_daily,
+        retention_days,
+    ):
+        logger = self.logger

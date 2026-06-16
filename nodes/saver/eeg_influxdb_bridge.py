@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 EEG InfluxDB Bridge Node
 
@@ -23,10 +22,10 @@ Configuration (environment variables or .env file):
 - INFLUXDB_TOKEN: Authentication token (required)
 - INFLUXDB_ORG: Organization name (default: healthcare)
 - INFLUXDB_BUCKET: Bucket name (default: eeg_data)
-- INFLUXDB_RETENTION_MINUTES: Data retention in minutes (default: 5)
+- INFLUXDB_RETENTION_MINUTES: Data retention in minutes (default: 2)
 
 Production Usage (with auto-cleanup):
-    # Cleanup runs every 60 seconds, keeps only last 5 minutes
+    # Cleanup runs every 30 seconds, keeps only last 2 minutes
     USE_INFLUXDB=1 ./launch/start.sh
     
     # Custom retention (e.g., 10 minutes)
@@ -42,9 +41,10 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy
 from healthcare_msgs.msg import EEG, EEGInfo
+from std_msgs.msg import Float32
 
 try:
-    from influxdb_client import InfluxDBClient, Point
+    from influxdb_client import InfluxDBClient, Point, WriteOptions
     from influxdb_client.client.write_api import SYNCHRONOUS
     from influxdb_client.client.delete_api import DeleteApi
     from datetime import datetime, timedelta
@@ -66,16 +66,16 @@ class EEGInfluxDBBridge(Node):
         
         # InfluxDB configuration from environment variables
         self.influx_url = os.getenv('INFLUXDB_URL', 'http://localhost:8086')
-        self.influx_token = os.getenv('INFLUXDB_TOKEN', '')
+        self.influx_token = os.getenv('INFLUXDB_TOKEN', os.getenv('INFLUXDB_ADMIN_TOKEN', ''))
         self.influx_org = os.getenv('INFLUXDB_ORG', 'healthcare')
         self.influx_bucket = os.getenv('INFLUXDB_BUCKET', 'eeg_data')
         
         if not self.influx_token:
-            self.get_logger().warn('INFLUXDB_TOKEN not set. Using empty token (may fail for authenticated instances)')
+            self.get_logger().warn('INFLUXDB_TOKEN / INFLUXDB_ADMIN_TOKEN not set. Using empty token (may fail for authenticated instances)')
         
-        # Data retention configuration (default: 5 minutes for production)
+        # Data retention configuration (default: 2 minutes for demo mode)
         # Set to 0 or negative to disable auto-cleanup.
-        self.retention_minutes = int(os.getenv('INFLUXDB_RETENTION_MINUTES', '5'))
+        self.retention_minutes = int(os.getenv('INFLUXDB_RETENTION_MINUTES', '2'))
         
         # Initialize InfluxDB client
         try:
@@ -84,7 +84,14 @@ class EEGInfluxDBBridge(Node):
                 token=self.influx_token,
                 org=self.influx_org
             )
-            self.write_api = self.influx_client.write_api(write_options=SYNCHRONOUS)
+            write_options = WriteOptions(
+                batch_size=500,
+                flush_interval=1000,
+                jitter_interval=250,
+                retry_interval=5000,
+                max_retries=5,
+            )
+            self.write_api = self.influx_client.write_api(write_options=write_options)
             self.delete_api = self.influx_client.delete_api()
             self.get_logger().info(f'Connected to InfluxDB at {self.influx_url}')
             self.get_logger().info(f'Writing to bucket: {self.influx_bucket}')
@@ -144,9 +151,16 @@ class EEGInfluxDBBridge(Node):
             qos_profile=info_qos
         )
         
-        # Create timer for automatic data cleanup (every 60 seconds)
+        # Subscribe to latency topic for monitoring )
+        self.latency_sub = self.create_subscription(
+            Float32,
+            '/eeg/latency',
+            self.latency_callback,
+            10
+        )
+        # Create timer for automatic data cleanup (every 30 seconds)
         if self.retention_minutes > 0:
-            self.cleanup_timer = self.create_timer(60.0, self.cleanup_old_data)
+            self.cleanup_timer = self.create_timer(30.0, self.cleanup_old_data)
         else:
             self.cleanup_timer = None
         
@@ -155,7 +169,7 @@ class EEGInfluxDBBridge(Node):
         self.get_logger().info('View data at: ' + self.influx_url)
         if self.retention_minutes > 0:
             self.get_logger().info(
-                f'Auto-cleanup: Running every 60s, deleting data older than {self.retention_minutes} minutes'
+                f'Auto-cleanup: Running every 30s, deleting data older than {self.retention_minutes} minutes'
             )
         else:
             self.get_logger().info('Auto-cleanup: Disabled')
@@ -214,6 +228,19 @@ class EEGInfluxDBBridge(Node):
         
         return channel_names
     
+    def latency_callback(self, msg: Float32):
+        try:
+            point = Point("eeg_latency") \
+                .field("value", float(msg.data))
+
+            self.write_api.write(
+                bucket=self.influx_bucket,
+                org=self.influx_org,
+                record=point
+            )
+        except Exception as e:
+            self.get_logger().warn(f"Latency write failed: {e}")
+    
     def _write_metadata(self, info_msg: EEGInfo, measurement: str):
         """Write EEGInfo metadata to InfluxDB."""
         try:
@@ -261,7 +288,7 @@ class EEGInfluxDBBridge(Node):
             if not channel_names or len(channel_names) != num_channels:
                 channel_names = [f'CH{i+1}' for i in range(num_channels)]
             
-            # Write each channel's samples as INDIVIDUAL points for proper visualization
+            # Write each channel's samples as individual points for proper visualization
             # Each sample gets its own timestamp for accurate time-series representation
             points = []
             
@@ -277,7 +304,7 @@ class EEGInfluxDBBridge(Node):
                 end_idx = start_idx + samples_per_channel
                 channel_samples = msg.eeg[start_idx:end_idx]
                 
-                # Write EACH individual sample as a separate time-series point
+                # Write individual sample as a separate time-series point
                 if channel_samples:
                     for sample_idx, sample_value in enumerate(channel_samples):
                         # Calculate timestamp for this specific sample

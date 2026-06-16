@@ -2,7 +2,7 @@
 """
 EEG JSON Saver Node - Data Persistence Component
 
-ROS2 node for saving EEG data streams to JSONL (JSON Lines) format.
+ROS2 node for saving EEG data streams to JSONL format.
 Provides human-readable, line-by-line storage of EEG messages following
 the healthcare_msgs standard.
 
@@ -34,12 +34,6 @@ Log files:
     logs/eeg_json_saver_raw.log          # Node logs
     logs/eeg_json_saver_raw.pid          # Process ID
 
-Parameters
-----------
-topic : str, default="/neurosity/eeg"
-    EEG data topic to subscribe to
-file_path : str, default="eeg_data/eeg_raw_data.jsonl"
-    Output JSONL file path
 
 EEG Message Fields Saved
 ------------------------
@@ -64,42 +58,15 @@ EEGInfo Fields Saved
 
 File Management
 ---------------
-- Files are truncated on node startup (prevents appending to old data)
+- Daily file rotation is enabled by default (one JSONL file per day)
+- Files are appended during the day (no startup truncation)
 - Parent directories created automatically
 - Metadata published once via latched topic, saved separately
 - Atomic writes ensure data consistency
 
-Examples
---------
-Save raw data (default):
-    $ ros2 run healthcare_msgs eeg_json_saver
-
-Save preprocessed data:
-    $ ros2 run healthcare_msgs eeg_json_saver --ros-args \
-        -p topic:=/eeg/processed \
-        -p file_path:=eeg_data/eeg_preprocessed_data.jsonl
-
-Run via launch script (starts both raw and preprocessed savers):
-    $ ./launch/start.sh
-
-Read saved data:
-    $ cat eeg_data/eeg_raw_data.jsonl | jq '.eeg | length'
-    $ grep quality eeg_data/eeg_raw_data.jsonl | jq '.quality'
-
-Notes
------
-- JSONL format enables streaming analysis without loading entire file
-- Each line is ~1-10 KB depending on channel count and samples
-- Quality scores are per-channel, not per-sample
-- Timestamps use ROS2 time (can be simulated or system time)
-
-See Also
---------
-eeg_rosbag_saver.py : Alternative MCAP/ROS2 bag format saver
-healthcare_msgs.msg.EEG : EEG message definition
-healthcare_msgs.msg.EEGInfo : EEG metadata definition
 """
 
+from asyncio.log import logger
 import json
 import rclpy
 from rclpy.node import Node
@@ -107,6 +74,8 @@ from rclpy.qos import QoSProfile, DurabilityPolicy
 from healthcare_msgs.msg import EEG, EEGInfo
 from pathlib import Path
 import os
+from datetime import datetime
+from saver import FileRotationManager
 
 
 
@@ -121,9 +90,13 @@ class EEGSaver(Node):
     Parameters (ROS2 CLI)
     ---------------------
     topic : str, optional
-        Topic to subscribe to (default: '/neurosity/eeg')
+        Topic to subscribe to (default: '/eeg/raw')
     file_path : str, optional
         Output JSONL file path (default: 'eeg_data/eeg_raw_data.jsonl')
+    rotate_daily : bool, optional
+        Rotate output files daily using suffix _YYYY-MM-DD (default: true)
+    retention_days : int, optional
+        Delete this saver's rotated files older than this many days (default: 4)
     
     File Organization
     -----------------
@@ -131,13 +104,6 @@ class EEGSaver(Node):
     - Log files: logs/*.log
     - PID files: logs/*.pid
     
-    Examples
-    --------
-    Save raw data (default):
-    $ ros2 run healthcare_msgs eeg_json_saver
-    
-    Save preprocessed data:
-    $ ros2 run healthcare_msgs eeg_json_saver --ros-args -p topic:=/eeg/processed
     """
     def __init__(self):
         super().__init__('eeg_saver')
@@ -152,12 +118,16 @@ class EEGSaver(Node):
         default_preprocessed_path = os.path.join(DATA_DIR, 'eeg_preprocessed_data.jsonl')
 
         # Declare parameters for topic and file path (allowing CLI override)
-        self.declare_parameter('topic', '/neurosity/eeg')
+        self.declare_parameter('topic', '/eeg/raw')
         self.declare_parameter('file_path', default_raw_path)
+        self.declare_parameter('rotate_daily', True)
+        self.declare_parameter('retention_days', 4)
 
         # Get parameters after node is fully initialized to ensure CLI overrides are respected
         topic = self.get_parameter('topic').get_parameter_value().string_value
         file_path = self.get_parameter('file_path').get_parameter_value().string_value
+        self.rotate_daily = self.get_parameter('rotate_daily').get_parameter_value().bool_value
+        self.retention_days = self.get_parameter('retention_days').get_parameter_value().integer_value
 
         # Optionally: update node name for logging clarity (not strictly needed for ROS2, but helps debug)
         if '/raw' in topic:
@@ -167,16 +137,13 @@ class EEGSaver(Node):
         else:
             self._node_name = 'eeg_saver'
 
-        self.data_file = Path(file_path)
-        self.data_file.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Clear/create the data file on startup (overwrite mode)
-        with open(self.data_file, 'w') as f:
-            pass  # Creates empty file or truncates existing file
-        
-        # Create metadata file path (same name with _info.json suffix)
-        self.info_file = self.data_file.with_suffix('').with_suffix('.info.json')
+        self.base_data_file = Path(file_path)
+        self.base_data_file.parent.mkdir(parents=True, exist_ok=True)
+        self.current_day = None
+        self.data_file = None
+        self.info_file = None
         self.info_stored = False
+        self._refresh_output_paths(force=True)
 
         self.get_logger().info(f'EEG Saver initialized. Subscribing to: {topic}. Data will be saved to: {self.data_file}')
 
@@ -218,13 +185,49 @@ class EEGSaver(Node):
         )
 
         self.message_count = 0
+        self.file_rotation_manager = FileRotationManager(self.get_logger())
+
+    def _build_dated_path(self, base_file: Path, day_str: str) -> Path:
+        """Build file path with date suffix before extension."""
+        return base_file.with_name(f'{base_file.stem}_{day_str}{base_file.suffix}')
+
+
+    def _refresh_output_paths(self, force: bool = False):
+        """Rotate output paths when day changes (if enabled)."""
+        day_str = datetime.now().strftime('%Y-%m-%d')
+        if not force and self.rotate_daily and self.current_day == day_str:
+            return
+
+        previous_data_file = self.data_file
+        self.current_day = day_str if self.rotate_daily else 'static'
+
+        if self.rotate_daily:
+            self.data_file = self._build_dated_path(self.base_data_file, day_str)
+        else:
+            self.data_file = self.base_data_file
+
+        self.data_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.data_file, 'a'):
+            pass
+
+        self.info_file = self.data_file.with_suffix('').with_suffix('.info.json')
+        self.file_rotation_manager.cleanup_rotated_files_JSONL(
+            base_data_file=self.data_file,
+            rotate_daily=self.rotate_daily,
+            retention_days=self.retention_days
+        )
+
+        if previous_data_file != self.data_file:
+            self.info_stored = False
+            self.get_logger().info(f'Using output file: {self.data_file}')
         
     def eeg_callback(self, msg: EEG):
         """Called whenever a new EEG message is received.
         Serializes the complete EEG message in healthcare_msgs format."""
         try:
-            # Convert message to dictionary - preserving full healthcare_msgs structure
-            # Convert and reduce precision to save space
+            self._refresh_output_paths()
+
+            # Convert message to dictionary - preserving full healthcare_msgs structureThe amendedThere can be quite favorable.
             # Aggressive rounding to reduce on-disk size (helps memory-efficiency test)
             # Store EEG samples as integer microvolts (rounded) to minimize text size
             eeg_list = [int(round(float(x))) for x in msg.eeg]
@@ -260,6 +263,8 @@ class EEGSaver(Node):
     def info_callback(self, msg: EEGInfo):
         """Called when EEGInfo metadata is received.
         Stores it once to a JSON file and republishes it."""
+        self._refresh_output_paths()
+
         if self.info_stored:
             return  # Only store once
         

@@ -2,17 +2,16 @@
 """
 EEG Data Simulator Node
 
-Generates realistic 4-channel EEG data at 150 Hz sampling rate and publishes to /eeg/raw topic.
+Generates 4-channel EEG data at 150 Hz sampling rate and publishes to /eeg/raw topic.
 Useful for testing and development without physical EEG hardware.
 
 Features:
-- 150 Hz sampling rate (realistic for clinical EEG)
+- 150 Hz sampling rate
 - 30 samples per message at 5 Hz message rate (200ms intervals)
 - 4 channels: FP1, FP2, F3, F4 (frontal electrode positions)
 - **Eyes Open/Closed Simulation**: Alternates every 60 seconds
   * Eyes OPEN (0-60s, 120-180s, ...): Reduced alpha, increased beta, more eye artifacts
   * Eyes CLOSED (60-120s, 180-240s, ...): Strong alpha, reduced beta, minimal eye artifacts
-- Realistic brain signal characteristics:
   * Alpha waves (8-12 Hz) - Dominant when eyes closed (alpha blocking when open)
   * Beta waves (13-30 Hz) - Active thinking, stronger when eyes open
   * Theta waves (4-8 Hz) - Drowsiness/meditation
@@ -21,8 +20,8 @@ Features:
   * FP1/FP2 (prefrontal): More eye artifacts, higher noise
   * F3/F4 (frontal): Less artifacts, cleaner signal
   * Hemispheric lateralization (left vs right differences)
-- Realistic voltage ranges (10-100 μV typical EEG)
-- Realistic artifacts: Eye movements (50-100 μV), blinks (80 μV), muscle (20 μV), 50Hz powerline
+- Realistic voltage ranges (10-100 μV )
+-  Eye movements (50-100 μV), blinks (80 μV), muscle (20 μV), 50Hz powerline
 
 Topics:
 - /eeg/raw (healthcare_msgs/EEG): Raw EEG samples
@@ -87,7 +86,7 @@ class EEGSimulator(Node):
         )
     
     def generate_signal(self, channel, time_sec):
-        """Generate realistic EEG-like signal for a channel.
+        """Generate EEG-like signal for a channel.
         
         Combines multiple frequency components to simulate brain activity with:
         - Channel-specific characteristics (FP1/FP2 vs F3/F4)
@@ -117,7 +116,7 @@ class EEGSimulator(Node):
             # Eyes closed: Strong alpha waves (relaxed, awake state)
             alpha_amplitude = 35.0  # μV
         
-        # Posterior channels would have more alpha, but we only have frontal
+        
         # Still show alpha modulation in frontal regions
         alpha = alpha_amplitude * math.sin(2 * math.pi * self.alpha_freq * time_sec + phase_shift)
         

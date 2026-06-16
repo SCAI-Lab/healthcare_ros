@@ -15,9 +15,10 @@ This will:
 - Build workspace packages if needed
 - Start the complete 4-node EEG pipeline:
   1. **EEG Simulator**, **Neurosity Driver**, or **OpenBCI Driver** (depending on USE_ACQUISITION or device)
-  2. **Raw EEG Saver** - saves to `eeg_data/eeg_raw_data.jsonl`
+  2. **Raw EEG Saver** - saves to daily files like `eeg_data/eeg_raw_data_YYYY-MM-DD.jsonl`
   3. **EEG Preprocessor** - applies bandpass filter (0.5-45 Hz) and CAR
-  4. **Preprocessed EEG Saver** - saves to `eeg_data/eeg_preprocessed_data.jsonl`
+  4. **Preprocessed EEG Saver** - saves to daily files like `eeg_data/eeg_preprocessed_data_YYYY-MM-DD.jsonl`
+- Daily JSONL retention is enabled: files older than 4 days are automatically deleted.
 
 ## Environment Variables
 
@@ -98,6 +99,25 @@ USE_ACQUISITION=0 VISUALIZATION_MODE=comparison ./launch/start.sh
 ```bash
 USE_ACQUISITION=0 USE_ROSBAG=1 ./launch/start.sh
 ```
+
+### Enable Real-Time Latency Monitoring with Dashboard
+```bash
+# Production setup with latency monitoring (recommended for performance analysis)
+PRODUCTION=1 ./launch/start.sh
+```
+
+This enables:
+- Real-time EEG visualization (Raw vs Preprocessed)
+- End-to-End Latency Metrics on the dashboard
+- InfluxDB time-series database (5-minute data retention)
+- Web dashboard at http://localhost:8080
+
+Monitor latency metrics directly in the dashboard:
+- Raw>Proc: Time from acquisition to preprocessing (typical: 8-20ms)
+- E2E: Total end-to-end latency (typical: 30-100ms)
+- EMA: Exponential moving average over last 100 samples
+
+For detailed latency analysis, see [LATENCY_MONITORING_EN.md](../docs/LATENCY_MONITORING_EN.md)
 *Records all topics to MCAP format in `nodes/rosbag_data/`. View with `ros2 bag info nodes/rosbag_data/`*
 
 ### Run automated tests (unit + integration)
@@ -139,8 +159,9 @@ cat logs/eeg_json_saver_preprocessed.pid
 ### View data files
 ```bash
 # From project root
-head -3 eeg_data/eeg_raw_data.jsonl | python3 -m json.tool
-head -3 eeg_data/eeg_preprocessed_data.jsonl | python3 -m json.tool
+TODAY=$(date +%F)
+head -3 "eeg_data/eeg_raw_data_${TODAY}.jsonl" | python3 -m json.tool
+head -3 "eeg_data/eeg_preprocessed_data_${TODAY}.jsonl" | python3 -m json.tool
 
 # File sizes
 ls -lh eeg_data/
@@ -196,8 +217,8 @@ python3 nodes/visualization/plotting/plot_eeg_comparison.py
 USE_INFLUXDB=1 ./launch/start.sh
 ```
 Dashboard URLs:
-- http://localhost/
-- https://localhost/
+- http://localhost:8080/ (recommended)
+- https://localhost/ (optional TLS endpoint)
 
 ## Troubleshooting
 

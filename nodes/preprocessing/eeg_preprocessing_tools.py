@@ -6,9 +6,6 @@ Collection of sophisticated EEG preprocessing methods built on MNE-Python.
 Provides ICA, baseline correction, epoching, and advanced filtering beyond
 the basic real-time preprocessing pipeline.
 
-This module is intended for offline analysis and research workflows where
-computational cost is less critical than in real-time streaming.
-
 Features
 --------
 - Independent Component Analysis (ICA) for artifact removal
@@ -29,45 +26,13 @@ Key Methods:
 - apply_baseline_correction(): Remove DC offset
 - create_epochs(): Extract event-locked segments
 
-Usage Example
--------------
->>> from eeg_preprocessing_tools import EEGPreprocessingTools
->>> tools = EEGPreprocessingTools()
->>> 
->>> # Load EEG data into MNE Raw object
->>> raw = mne.io.read_raw_fif('data.fif', preload=True)
->>> 
->>> # Apply preprocessing chain
->>> filtered = tools.apply_bandpass_filter(raw, 0.5, 45.0, 150.0)
->>> referenced = tools.apply_car(filtered)
->>> 
->>> # ICA for artifact removal
->>> ica = tools.apply_ica(referenced, n_components=15)
->>> clean = tools.reconstruct_from_ica(referenced, ica, exclude=[0, 1])
-
-Integration with Pipeline
--------------------------
-While the main preprocessing node (eeg_preprocessing.py) handles real-time
-filtering, this module provides additional tools for:
-- Offline batch processing
-- Research-grade preprocessing
-- Exploratory data analysis
-- Advanced artifact removal
-
-The basic real-time pipeline uses simplified versions of these algorithms
-for lower latency.
-
 Notes
 -----
 - Requires MNE-Python (pip install mne)
 - Designed for MNE Raw objects, not ROS messages
-- Higher computational cost than real-time preprocessing
+- High computational cost
 - Suitable for post-acquisition analysis
 
-See Also
---------
-eeg_preprocessing.py : Real-time preprocessing node
-mne.preprocessing : MNE preprocessing module documentation
 """
 import mne
 import numpy as np
@@ -263,12 +228,26 @@ class EEGPreprocessingTools:
             tuple: (eeg_array, sample_size) where eeg_array is shaped (channels, samples)
         """
         eeg_array = np.array(eeg_flat, dtype=np.float64)
+        if sample_size <= 0:
+            self.logger.error(f"Invalid sample_size {sample_size} received when reshaping EEG data")
+            raise ValueError(f"Invalid sample_size: {sample_size}")
+        
         num_channels = len(eeg_array) // sample_size
+        
+        if len(eeg_array) == 0:
+            self.logger.error("Empty EEG data received for reshaping")
+            raise ValueError("Empty EEG data")
         
         if len(eeg_array) % sample_size != 0:
             self.logger.warning(f"EEG data length {len(eeg_array)} not evenly divisible by sample_size {sample_size}")
             # Trim to make it evenly divisible
             eeg_array = eeg_array[:num_channels * sample_size]
+        
+        if num_channels == 0:
+            self.logger.error(
+                f"Unable to reshape EEG data: length={len(eeg_array)} sample_size={sample_size} num_channels={num_channels}"
+            )
+            raise ValueError("Invalid EEG reshape dimensions")
         
         eeg_array = eeg_array.reshape(num_channels, sample_size)
         self.logger.debug(f"Reshaped EEG data to {eeg_array.shape}")
