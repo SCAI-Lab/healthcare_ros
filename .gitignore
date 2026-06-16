@@ -224,6 +224,8 @@ venv/
 !env_credentials/*.env.encrypted
 config/*.yaml
 config/*.yml
+/ngix/
+
 
 # Plaintext credentials in env_credentials/ (ignore)
 env_credentials/*.env
@@ -248,3 +250,5 @@ nodes/visualization/influxdb_realtime_dashboard.html
 
 # Old virtual environment (use ~/hcmd-venv instead)
 .venv/
+
+
