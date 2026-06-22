@@ -316,3 +316,5 @@ This project is part of the healthcare_ros system developed by SCAI-Lab.
 
 Just configure `env_credentials/.env.influxdb`, run `USE_INFLUXDB=1 ./launch/start.sh`, and open the dashboard!
 
+## 🙏 Acknowledgements
+This work was partially funded by the Open Research Data program of the ETH Board, and Schweizer Paraplegiker Stiftung (2021-HS-348) within the Digital Transformation in Personalized Healthcare in SCI.
