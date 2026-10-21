@@ -196,7 +196,7 @@ class EEGIntegrationTest:
     
     def _test_message_format(self):
         """Check if messages have required fields."""
-        required_fields = ['header', 'session_id', 'sample_size', 'eeg', 'quality']
+        required_fields = ['header', 'session_id', 'sample_size', 'eeg', 'signal_quality']
         with open(self.data_file, 'r') as f:
             for line in f:
                 msg = json.loads(line)
@@ -213,7 +213,7 @@ class EEGIntegrationTest:
         with open(self.data_file, 'r') as f:
             for line in f:
                 msg = json.loads(line)
-                if len(msg['quality']) != 4:
+                if len(msg['signal_quality']) != 4:
                     return False
         return True
     
@@ -233,7 +233,7 @@ class EEGIntegrationTest:
         with open(self.data_file, 'r') as f:
             for line in f:
                 msg = json.loads(line)
-                for q in msg['quality']:
+                for q in msg['signal_quality']:
                     if not (0.0 <= q <= 1.0):
                         return False
         return True
@@ -315,7 +315,7 @@ class EEGIntegrationTest:
             
             if lines:
                 first_msg = json.loads(lines[0])
-                num_channels = len(first_msg['quality'])
+                num_channels = len(first_msg['signal_quality'])
                 sample_size = first_msg['sample_size']
                 total_samples = len(lines) * num_channels * sample_size
                 

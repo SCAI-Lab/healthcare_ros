@@ -220,7 +220,7 @@ class EEGSimulator(Node):
             quality_data.append(max(0.5, min(1.0, quality)))
         
         eeg_msg.eeg = eeg_data
-        eeg_msg.quality = quality_data
+        eeg_msg.signal_quality = quality_data
 
         self.eeg_pub.publish(eeg_msg)
         self.message_count += 1

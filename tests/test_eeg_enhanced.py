@@ -53,7 +53,7 @@ class TestEnhancedEEG(unittest.TestCase):
     def test_message_format(self):
         if not self.use_json:
             self.skipTest("JSON saver not in use; skipping JSON file tests.")
-        required_fields = ['header', 'session_id', 'sample_size', 'eeg', 'quality']
+        required_fields = ['header', 'session_id', 'sample_size', 'eeg', 'signal_quality']
         with open(self.data_file, 'r') as f:
             for line in f:
                 msg = json.loads(line)
@@ -68,7 +68,7 @@ class TestEnhancedEEG(unittest.TestCase):
         with open(self.data_file, 'r') as f:
             for line in f:
                 msg = json.loads(line)
-                self.assertEqual(len(msg['quality']), 4)
+                self.assertEqual(len(msg['signal_quality']), 4)
 
     def test_sample_consistency(self):
         if not self.use_json:
@@ -86,7 +86,7 @@ class TestEnhancedEEG(unittest.TestCase):
         with open(self.data_file, 'r') as f:
             for line in f:
                 msg = json.loads(line)
-                for q in msg['quality']:
+                for q in msg['signal_quality']:
                     self.assertTrue(0.0 <= q <= 1.0)
 
     def test_no_data_loss(self):
@@ -195,7 +195,7 @@ if __name__ == '__main__':
             
             if lines:
                 first_msg = json.loads(lines[0])
-                num_channels = len(first_msg['quality'])
+                num_channels = len(first_msg['signal_quality'])
                 sample_size = first_msg['sample_size']
                 total_samples = len(lines) * num_channels * sample_size
                 file_size_kb = self.data_file.stat().st_size / 1024
