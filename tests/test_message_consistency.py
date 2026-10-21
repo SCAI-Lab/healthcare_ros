@@ -209,8 +209,8 @@ class TestMessageConsistency(unittest.TestCase):
             if raw_msg.sample_size > 0 and len(raw_msg.eeg) > 0:
                 actual_channels = len(raw_msg.eeg) // raw_msg.sample_size
                 self.assertEqual(
-                    len(raw_msg.quality), actual_channels,
-                    f"Quality array length {len(raw_msg.quality)} doesn't match "
+                    len(raw_msg.signal_quality), actual_channels,
+                    f"Quality array length {len(raw_msg.signal_quality)} doesn't match "
                     f"channel count {actual_channels}"
                 )
     

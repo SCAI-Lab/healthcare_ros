@@ -187,12 +187,12 @@ class EEGPreprocessor(Node):
 
             # Copy quality safely
             try:
-                if msg.quality and len(msg.quality) == processed.shape[0]:
-                    out.quality = list(msg.quality)
+                if msg.signal_quality and len(msg.signal_quality) == processed.shape[0]:
+                    out.signal_quality = list(msg.signal_quality)
                 else:
-                    out.quality = []
+                    out.signal_quality = []
             except Exception:
-                out.quality = []
+                out.signal_quality = []
 
             self.pub.publish(out)
 

@@ -231,7 +231,7 @@ class EEGSaver(Node):
             # Aggressive rounding to reduce on-disk size (helps memory-efficiency test)
             # Store EEG samples as integer microvolts (rounded) to minimize text size
             eeg_list = [int(round(float(x))) for x in msg.eeg]
-            quality_list = [round(float(q), 2) for q in msg.quality]
+            quality_list = [round(float(q), 2) for q in msg.signal_quality]
 
             data = {
                 'header': {
@@ -244,7 +244,7 @@ class EEGSaver(Node):
                 'session_id': msg.session_id,
                 'sample_size': int(msg.sample_size),
                 'eeg': eeg_list,
-                'quality': quality_list,
+                'signal_quality': quality_list,
             }
 
             # Write compact JSON (no spaces) to reduce size
